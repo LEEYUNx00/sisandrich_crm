@@ -593,8 +593,8 @@ export default function CRM() {
               <h3 style={{ fontSize: '20px', fontWeight: 'bold', marginBottom: '8px' }}>ลิงก์สำหรับสมัครสมาชิก</h3>
               <p style={{ fontSize: '13px', color: '#718096', marginBottom: '24px' }}>ให้ลูกค้าสแกนเพื่อกรอกข้อมูลด้วยตนเอง</p>
               <div style={{ display: 'flex', alignItems: 'center', border: '1px solid #E2E8F0', borderRadius: '8px', padding: '8px 12px', background: '#F7FAFC', marginBottom: '24px' }}>
-                 <input type="text" value="https://sisandrich.com/register" readOnly style={{ border: 'none', background: 'transparent', flex: 1, fontSize: '14px', outline: 'none' }} />
-                 <button className="btn-icon" onClick={() => { navigator.clipboard.writeText('https://sisandrich.com/register'); alert('Copied!'); }}><Copy size={16}/></button>
+                 <input type="text" value={`${window.location.origin}/register`} readOnly style={{ border: 'none', background: 'transparent', flex: 1, fontSize: '14px', outline: 'none' }} />
+                 <button className="btn-icon" onClick={() => { navigator.clipboard.writeText(`${window.location.origin}/register`); alert('Copied!'); }}><Copy size={16}/></button>
               </div>
               <button className="btn btn-primary" style={{ width: '100%' }} onClick={() => setShowLinkModal(false)}>ตกลง</button>
            </div>

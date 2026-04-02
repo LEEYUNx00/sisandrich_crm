@@ -15,6 +15,7 @@ import Reports from './pages/Reports';
 import Employees from './pages/Employees';
 import PrintSettings from './pages/PrintSettings';
 import Login from './pages/Login';
+import Register from './pages/Register';
 import { db } from './firebase';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 
@@ -176,36 +177,44 @@ function App() {
     );
   }
 
-  if (!user) {
-    return <Login />;
-  }
-
   const hasPermission = (key) => {
     return userPermissions === 'admin' || userPermissions?.[key];
   };
 
   return (
     <BrowserRouter>
-      <div className="app-container">
-        <Sidebar permissions={userPermissions} />
-        <main className="main-content">
-          <Header />
-          <div className="content-area">
-            <Routes>
-              <Route path="/" element={<Dashboard />} />
-              <Route path="/pos" element={hasPermission('pos') ? <POS /> : <Dashboard />} />
-              <Route path="/sales-history" element={hasPermission('pos') ? <SalesHistory /> : <Dashboard />} />
-              <Route path="/inventory" element={hasPermission('inventory') ? <Inventory /> : <Dashboard />} />
-              <Route path="/crm" element={hasPermission('crm') ? <CRM /> : <Dashboard />} />
-              <Route path="/promotions" element={hasPermission('promotions') ? <Promotions /> : <Dashboard />} />
-              <Route path="/reports" element={hasPermission('reports') ? <Reports /> : <Dashboard />} />
-              <Route path="/settings/print" element={hasPermission('settings') ? <PrintSettings /> : <Dashboard />} />
-              <Route path="/employees" element={hasPermission('employees') ? <Employees /> : <Dashboard />} />
-              <Route path="/settings" element={hasPermission('settings') ? <Settings /> : <Dashboard />} />
-            </Routes>
-          </div>
-        </main>
-      </div>
+      <Routes>
+        {/* Public Route: Registration */}
+        <Route path="/register" element={<Register />} />
+
+        {/* Private Routes Wrapper */}
+        <Route path="*" element={
+          !user ? (
+            <Login />
+          ) : (
+            <div className="app-container">
+              <Sidebar permissions={userPermissions} />
+              <main className="main-content">
+                <Header />
+                <div className="content-area">
+                  <Routes>
+                    <Route path="/" element={<Dashboard />} />
+                    <Route path="/pos" element={hasPermission('pos') ? <POS /> : <Dashboard />} />
+                    <Route path="/sales-history" element={hasPermission('pos') ? <SalesHistory /> : <Dashboard />} />
+                    <Route path="/inventory" element={hasPermission('inventory') ? <Inventory /> : <Dashboard />} />
+                    <Route path="/crm" element={hasPermission('crm') ? <CRM /> : <Dashboard />} />
+                    <Route path="/promotions" element={hasPermission('promotions') ? <Promotions /> : <Dashboard />} />
+                    <Route path="/reports" element={hasPermission('reports') ? <Reports /> : <Dashboard />} />
+                    <Route path="/settings/print" element={hasPermission('settings') ? <PrintSettings /> : <Dashboard />} />
+                    <Route path="/employees" element={hasPermission('employees') ? <Employees /> : <Dashboard />} />
+                    <Route path="/settings" element={hasPermission('settings') ? <Settings /> : <Dashboard />} />
+                  </Routes>
+                </div>
+              </main>
+            </div>
+          )
+        } />
+      </Routes>
     </BrowserRouter>
   );
 }
