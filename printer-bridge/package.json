@@ -1,0 +1,13 @@
+{
+  "name": "sis-rich-printer-bridge",
+  "version": "1.0.0",
+  "description": "Printer Bridge for SiS & RICH Web POS",
+  "main": "bridge.js",
+  "scripts": {
+    "start": "node bridge.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5"
+  }
+}
