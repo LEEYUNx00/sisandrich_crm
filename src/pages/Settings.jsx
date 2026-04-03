@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../firebase';
 import { collection, onSnapshot, query, orderBy, limit, doc, setDoc, getDocs, deleteDoc, writeBatch, updateDoc } from 'firebase/firestore';
-import { Calendar, Search, Download, Filter, FileText, ShoppingCart, ShoppingBag, Clock, Settings as SettingsIcon, Shield, Store, Bell, Trash2, Database, AlertTriangle } from 'lucide-react';
+import { Calendar, Search, Download, Filter, FileText, ShoppingCart, ShoppingBag, Clock, Settings as SettingsIcon, Shield, Store, Bell, Trash2, Database, AlertTriangle, Printer, Layout, Smartphone, Save, Smartphone as Mobile } from 'lucide-react';
 
 export default function Settings() {
   const [activeTab, setActiveTab] = useState('general'); // 'general' | 'audit'
@@ -27,6 +27,22 @@ export default function Settings() {
     enableLowStockAlert: true
   });
 
+  const [printSettings, setPrintSettings] = useState({
+    shopName: 'Sis&Rich',
+    address: '860 ถ. มังกร แขวงจักรวรรดิ์\nเขตสัมพันธวงศ์ กรุงเทพมหานคร 10100',
+    receiptFooter: 'หากชำระค่าสินค้าแล้วไม่สามารถเปลี่ยน / คืนสินค้าได้\nกรณีสินค้าชำรุดกรุณาแจ้งเคลมสินค้าภายใน 7 วันทำการ\n**ขอสงวนสิทธิ์การเคลมสินค้า กรณีไม่มีใบเสร็จมาแสดง**',
+    barcodeWidth: '32mm',
+    barcodeHeight: '25mm',
+    showShopNameOnBarcode: true,
+    qrCodeUrl: '',
+    blessings: 'ขอให้เป็นวันที่สดใสนะคะ\nขอบคุณที่แวนมาอุดหนุนค่ะ\nขอให้สนุกกับการแต่งตัวนะคะ\nขอให้ร่ำรวยๆ ค่ะ',
+    receiptWidth: 72,
+    receiptFontSize: 12,
+    receiptLeftMargin: 0
+  });
+
+  const [posSubTab, setPosSubTab] = useState('sales'); // 'sales' | 'receipt' | 'barcode'
+
   const mockLogs = [
     { id: '1', timestamp: new Date(Date.now() - 1000 * 60 * 5), type: 'sales', action: 'เปิดบิลขาย POS', detail: 'เปิดบิลขาย #INV-10023 รายการรวม ฿3,400 (ชำระด้วยเงินสด)', operator: 'Cashier Staff' },
     { id: '2', timestamp: new Date(Date.now() - 1000 * 60 * 25), type: 'inventory', action: 'ปรับระดับสต็อก', detail: 'ปรับสต็อกสินค้า RNG-001 เพิ่ม +12 ชิ้น', operator: 'Admin Staff' },
@@ -36,12 +52,13 @@ export default function Settings() {
 
   // Load Settings from Firestore
   useEffect(() => {
-    const unsubscribe = onSnapshot(doc(db, 'settings', 'system_config'), (snapshot) => {
-      if (snapshot.exists()) {
-        setShopConfig(snapshot.data());
-      }
+    const unsubSystem = onSnapshot(doc(db, 'settings', 'system_config'), (snapshot) => {
+      if (snapshot.exists()) setShopConfig(snapshot.data());
     });
-    return () => unsubscribe();
+    const unsubReceipt = onSnapshot(doc(db, 'settings', 'receipt'), (snapshot) => {
+      if (snapshot.exists()) setPrintSettings(snapshot.data());
+    });
+    return () => { unsubSystem(); unsubReceipt(); };
   }, []);
 
   // Fetch real-time Audit Logs
@@ -89,8 +106,12 @@ export default function Settings() {
   const handleSaveSettings = async (e) => {
     if (e) e.preventDefault();
     try {
-      await setDoc(doc(db, 'settings', 'system_config'), shopConfig);
-      alert('บันทึกการตั้งค่าลงระบบ Cloud เรียบร้อยแล้ว! 🎉');
+      if (activeTab === 'general' || (activeTab === 'pos_config' && posSubTab === 'sales')) {
+         await setDoc(doc(db, 'settings', 'system_config'), shopConfig);
+      } else {
+         await setDoc(doc(db, 'settings', 'receipt'), printSettings);
+      }
+      alert('บันทึกการตั้งค่าเรียบร้อยแล้ว! 🎉');
     } catch (err) {
       alert('Error saving settings: ' + err.message);
     }
@@ -160,7 +181,7 @@ export default function Settings() {
 
   const menuItems = [
     { id: 'general', label: 'ตั้งค่าร้านค้า (Store)', icon: <Store size={18} /> },
-    { id: 'pos_config', label: 'ตั้งค่า POS (Back Office)', icon: <ShoppingCart size={18} /> },
+    { id: 'pos_config', label: 'จัดการรูปแบบบิล (Receipt)', icon: <Printer size={18} /> },
     { id: 'audit', label: 'ประวัติระบบ (Audit Logs)', icon: <Clock size={18} /> },
     { id: 'maintenance', label: 'บำรุงรักษา (Maintenance)', icon: <Database size={18} /> },
     { id: 'notifications', label: 'การแจ้งเตือน (Notice)', icon: <Bell size={18} /> },
@@ -220,64 +241,156 @@ export default function Settings() {
           </div>
         )}
 
-        {/* VIEW POS_CONFIG: BACK OFFICE SETTINGS */}
         {activeTab === 'pos_config' && (
-          <div className="card animate-slide-in" style={{ padding: '24px', backgroundColor: '#fff' }}>
-            <h3 style={{ fontSize: '20px', fontWeight: 'bold', marginBottom: '20px', color: '#1A202C' }}>🛒 จัดการระบบ POS (Back Office)</h3>
-            
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
+          <div className="animate-slide-in">
+            {/* Sub-Tab Navigation for POS/Receipt */}
+            <div style={{ display: 'flex', gap: '2px', background: '#F7FAFC', padding: '0 10px', borderRadius: '12px 12px 0 0', border: '1px solid #E2E8F0', borderBottom: 'none' }}>
+               <button onClick={() => setPosSubTab('sales')} style={{ padding: '12px 20px', fontWeight: 'bold', cursor: 'pointer', borderBottom: posSubTab === 'sales' ? '3px solid #E53E3E' : '3px solid transparent', color: posSubTab === 'sales' ? '#E53E3E' : '#718096', background: posSubTab === 'sales' ? '#FFF5F5' : 'transparent', border: 'none' }}>
+                  ⚙️ ระบบขาย & ภาษี
+               </button>
+               <button onClick={() => setPosSubTab('receipt')} style={{ padding: '12px 20px', fontWeight: 'bold', cursor: 'pointer', borderBottom: posSubTab === 'receipt' ? '3px solid #E53E3E' : '3px solid transparent', color: posSubTab === 'receipt' ? '#E53E3E' : '#718096', background: posSubTab === 'receipt' ? '#FFF5F5' : 'transparent', border: 'none' }}>
+                  📄 รูปแบบบิล XP-80
+               </button>
+               <button onClick={() => setPosSubTab('barcode')} style={{ padding: '12px 20px', fontWeight: 'bold', cursor: 'pointer', borderBottom: posSubTab === 'barcode' ? '3px solid #E53E3E' : '3px solid transparent', color: posSubTab === 'barcode' ? '#E53E3E' : '#718096', background: posSubTab === 'barcode' ? '#FFF5F5' : 'transparent', border: 'none' }}>
+                  🏷️ สร้างบาร์โค้ดด่วน
+               </button>
+            </div>
+
+            <div className="card" style={{ padding: '24px', backgroundColor: '#fff', borderRadius: '0 0 12px 12px' }}>
               
-              {/* Left Column: Tax & Pricing */}
-              <div>
-                <h4 style={{ fontSize: '15px', fontWeight: 'bold', borderBottom: '1px solid #EDF2F7', paddingBottom: '8px', marginBottom: '16px' }}>อัตราภาษี & ค่าธรรมเนียม</h4>
-                <div style={{ marginBottom: '16px' }}>
-                  <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', fontWeight: '600' }}>อัตราภาษีมูลค่าเพิ่ม (%)</label>
-                  <input type="number" className="input" value={shopConfig.taxRate} onChange={e => setShopConfig({...shopConfig, taxRate: e.target.value})} />
-                </div>
-                <div style={{ marginBottom: '16px' }}>
-                  <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', fontWeight: '600' }}>ค่าบริการ (Service Charge %)</label>
-                  <input type="number" className="input" value={shopConfig.serviceCharge} onChange={e => setShopConfig({...shopConfig, serviceCharge: e.target.value})} />
-                </div>
-              </div>
+              {/* SUB-VIEW 1: SALES & TAX */}
+              {posSubTab === 'sales' && (
+                 <div className="animate-fade-in">
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
+                      <div>
+                        <h4 style={{ fontSize: '15px', fontWeight: 'bold', borderBottom: '1px solid #EDF2F7', paddingBottom: '8px', marginBottom: '16px' }}>อัตราภาษี & ค่าธรรมเนียม</h4>
+                        <div style={{ marginBottom: '16px' }}>
+                          <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', fontWeight: '600' }}>อัตราภาษีมูลค่าเพิ่ม (%)</label>
+                          <input type="number" className="input" value={shopConfig.taxRate} onChange={e => setShopConfig({...shopConfig, taxRate: e.target.value})} />
+                        </div>
+                        <div style={{ marginBottom: '16px' }}>
+                          <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', fontWeight: '600' }}>ค่าบริการ (Service Charge %)</label>
+                          <input type="number" className="input" value={shopConfig.serviceCharge} onChange={e => setShopConfig({...shopConfig, serviceCharge: e.target.value})} />
+                        </div>
+                      </div>
+                      <div>
+                        <h4 style={{ fontSize: '15px', fontWeight: 'bold', borderBottom: '1px solid #EDF2F7', paddingBottom: '8px', marginBottom: '16px' }}>คะแนนสมาชิก & CRM</h4>
+                        <div style={{ marginBottom: '16px' }}>
+                          <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', fontWeight: '600' }}>ทุกๆกี่บาท ได้ 1 คะแนน? (Point Base)</label>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <input type="number" className="input" value={shopConfig.pointBase} onChange={e => setShopConfig({...shopConfig, pointBase: e.target.value})} style={{ marginBottom: 0 }} />
+                            <span style={{ fontSize: '13px', color: '#718096' }}>บาท = 1 คะแนน</span>
+                          </div>
+                        </div>
+                        <div style={{ marginBottom: '16px' }}>
+                          <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', fontWeight: '600' }}>รหัสเครื่อง Point (POS Terminal Name)</label>
+                          <input type="text" className="input" value={shopConfig.terminalName} onChange={e => setShopConfig({...shopConfig, terminalName: e.target.value})} />
+                        </div>
+                      </div>
+                    </div>
+                    <div style={{ marginTop: '20px', borderTop: '1px solid #EDF2F7', paddingTop: '20px' }}>
+                      <button className="btn btn-primary" onClick={handleSaveSettings}>บันทึกข้อมูลระบบการขาย</button>
+                    </div>
+                 </div>
+              )}
 
-              {/* Right Column: CRM & Members */}
-              <div>
-                <h4 style={{ fontSize: '15px', fontWeight: 'bold', borderBottom: '1px solid #EDF2F7', paddingBottom: '8px', marginBottom: '16px' }}>คะแนนสมาชิก & CRM</h4>
-                <div style={{ marginBottom: '16px' }}>
-                  <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', fontWeight: '600' }}>ทุกๆกี่บาท ได้ 1 คะแนน? (Point Calculation)</label>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <input type="number" className="input" value={shopConfig.pointBase} onChange={e => setShopConfig({...shopConfig, pointBase: e.target.value})} style={{ marginBottom: 0 }} />
-                    <span style={{ fontSize: '13px', color: '#718096' }}>บาท = 1 คะแนน</span>
-                  </div>
-                </div>
-                <div style={{ marginBottom: '16px' }}>
-                  <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', fontWeight: '600' }}>รหัสเครื่อง Point (POS Terminal Name)</label>
-                  <input type="text" className="input" value={shopConfig.terminalName} onChange={e => setShopConfig({...shopConfig, terminalName: e.target.value})} />
-                </div>
-              </div>
+              {/* SUB-VIEW 2: RECEIPT LAYOUT */}
+              {posSubTab === 'receipt' && (
+                 <div className="animate-fade-in" style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: '24px' }}>
+                    <div>
+                        <div style={{ marginBottom: '16px' }}>
+                          <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', fontWeight: '600' }}>ชื่อบนหัวบิล (Header Name)</label>
+                          <input type="text" className="input" value={printSettings.shopName} onChange={e => setPrintSettings({...printSettings, shopName: e.target.value})} />
+                        </div>
+                        <div style={{ marginBottom: '16px' }}>
+                          <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', fontWeight: '600' }}>ที่อยู่ร้านค้า (Address)</label>
+                          <textarea className="input" rows="2" value={printSettings.address} onChange={e => setPrintSettings({...printSettings, address: e.target.value})} />
+                        </div>
+                        <div style={{ marginBottom: '16px' }}>
+                          <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', fontWeight: '600' }}>ข้อความท้ายบิล (Footer Content)</label>
+                          <textarea className="input" rows="3" value={printSettings.receiptFooter} onChange={e => setPrintSettings({...printSettings, receiptFooter: e.target.value})} />
+                        </div>
+                        
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px', marginTop: '16px', padding: '16px', background: '#F7FAFC', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
+                           <div>
+                             <label style={{ fontSize: '11px', fontWeight: 'bold' }}>พื้นที่พิมพ์ (mm)</label>
+                             <input type="number" className="input" value={printSettings.receiptWidth} onChange={e => setPrintSettings({...printSettings, receiptWidth: Number(e.target.value)})} />
+                           </div>
+                           <div>
+                             <label style={{ fontSize: '11px', fontWeight: 'bold' }}>ฟอนต์ (px)</label>
+                             <input type="number" className="input" value={printSettings.receiptFontSize} onChange={e => setPrintSettings({...printSettings, receiptFontSize: Number(e.target.value)})} />
+                           </div>
+                           <div>
+                             <label style={{ fontSize: '11px', fontWeight: 'bold' }}>ระยะขอบ (mm)</label>
+                             <input type="number" className="input" value={printSettings.receiptLeftMargin} onChange={e => setPrintSettings({...printSettings, receiptLeftMargin: Number(e.target.value)})} />
+                           </div>
+                        </div>
 
-            </div>
+                        <div className="input-group" style={{ marginTop: '20px' }}>
+                           <label style={{ fontWeight: 'bold', color: '#2B6CB0' }}>ลิงก์รูป QR Code (Image URL)</label>
+                           <input type="text" className="input" placeholder="URL รูปจากคลาวด์" value={printSettings.qrCodeUrl || ''} onChange={e => setPrintSettings({...printSettings, qrCodeUrl: e.target.value})} />
+                        </div>
 
-            <div style={{ marginTop: '24px' }}>
-               <h4 style={{ fontSize: '15px', fontWeight: 'bold', borderBottom: '1px solid #EDF2F7', paddingBottom: '8px', marginBottom: '16px' }}>การตั้งค่าใบเสร็จ (Receipt Layout)</h4>
-               <div style={{ marginBottom: '16px' }}>
-                  <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', fontWeight: '600' }}>ข้อความส่วนหัวใบเสร็จ (Header)</label>
-                  <input type="text" className="input" value={shopConfig.receiptHeader} onChange={e => setShopConfig({...shopConfig, receiptHeader: e.target.value})} />
-               </div>
-               <div style={{ marginBottom: '16px' }}>
-                  <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', fontWeight: '600' }}>ข้อความส่วนท้ายใบเสร็จ (Footer Text)</label>
-                  <textarea className="input" value={shopConfig.receiptFooter} onChange={e => setShopConfig({...shopConfig, receiptFooter: e.target.value})} style={{ minHeight: '80px' }}></textarea>
-               </div>
-            </div>
+                        <div style={{ marginTop: '20px', display: 'flex', gap: '12px' }}>
+                           <button className="btn btn-primary" onClick={handleSaveSettings}>บันทึกแก้ไขบิล</button>
+                           <button className="btn btn-outline" onClick={() => window.print()} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                             <Printer size={16} /> พิมพ์บิลทดสอบ
+                           </button>
+                        </div>
+                    </div>
 
-            <div style={{ marginTop: '20px', borderTop: '1px solid #EDF2F7', paddingTop: '20px' }}>
-              <button 
-                className="btn btn-primary" 
-                style={{ padding: '12px 32px', fontSize: '15px' }}
-                onClick={handleSaveSettings}
-              >
-                บันทึกการตั้งค่า POS ทั้งหมดลงคลาวด์
-              </button>
+                    {/* Receipt Preview */}
+                    <div style={{ padding: '24px', background: '#F8FAFC', borderRadius: '16px', border: '2px dashed #E2E8F0', height: 'fit-content' }}>
+                       <div style={{ textAlign: 'center', marginBottom: '16px', fontSize: '13px', color: '#718096', fontWeight: 'bold' }}>
+                         ตัวอย่างบิลขนาดจริง (XP-80)
+                       </div>
+                       <div className="shadow-lg" style={{ 
+                         background: 'white', color: '#000', padding: '15px', 
+                         width: `${printSettings.receiptWidth}mm`, maxWidth: '100%', margin: '0 auto',
+                         fontSize: `${printSettings.receiptFontSize}px`, fontFamily: 'monospace',
+                         borderTop: '8px solid #E53E3E', border: '1px solid #EDF2F7'
+                       }}>
+                          <div style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '1.2em' }}>{printSettings.shopName}</div>
+                          <div style={{ textAlign: 'center', fontSize: '0.85em', whiteSpace: 'pre-wrap', lineHeight: 1.4 }}>{printSettings.address}</div>
+                          <div style={{ borderBottom: '1px dashed #ccc', margin: '10px 0' }}></div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9em' }}><span>ITEM SAMPLE x 1</span><span>500.00</span></div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9em' }}><span>ITEM SAMPLE x 2</span><span>1,200.00</span></div>
+                          <div style={{ borderBottom: '1px dashed #ccc', margin: '10px 0' }}></div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold' }}><span>Total</span><span>1,700.00</span></div>
+                          <div style={{ borderBottom: '1px dashed #ccc', margin: '10px 0' }}></div>
+                          {printSettings.qrCodeUrl && (
+                             <div style={{ display: 'flex', justifyContent: 'center', margin: '10px 0' }}>
+                               <img src={printSettings.qrCodeUrl} alt="QR" style={{ width: '30mm', height: '30mm' }} />
+                             </div>
+                          )}
+                          <div style={{ textAlign: 'center', fontSize: '0.8em', whiteSpace: 'pre-wrap', marginTop: '10px' }}>{printSettings.receiptFooter}</div>
+                       </div>
+                    </div>
+                 </div>
+              )}
+
+              {/* SUB-VIEW 3: BARCODE (Quick Gen Placeholder) */}
+              {posSubTab === 'barcode' && (
+                 <div className="animate-fade-in" style={{ textAlign: 'center', padding: '60px 20px', background: '#F7FAFC', borderRadius: '16px', border: '2px dashed #E2E8F0' }}>
+                   <div style={{ marginBottom: '24px', color: '#718096' }}>
+                     <Layout size={64} style={{ margin: '0 auto 20px', opacity: 0.5 }} />
+                     <h4 style={{ color: '#2D3748', fontSize: '18px', fontWeight: 'bold' }}>ระบบบาร์โค้ดสติกเกอร์ (Label Tools)</h4>
+                     <p style={{ fontSize: '14px', maxWidth: '400px', margin: '0 auto' }}>คุณสามารถกำหนดขนาดที่ต้องการพิมพ์ลงม้วนสติกเกอร์ และเตรียมพิมพ์จากเมนูบาร์โค้ดด่วน</p>
+                   </div>
+                   <div style={{ display: 'flex', justifyContent: 'center', gap: '16px' }}>
+                     <div className="input-group" style={{ textAlign: 'left', background: 'white', padding: '16px', borderRadius: '12px', border: '1px solid #E2E8F0' }}>
+                        <label style={{ fontSize: '12px', fontWeight: 'bold' }}>สเกลบาร์โค้ด (กว้าง x สูง)</label>
+                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '4px' }}>
+                           <input type="text" className="input" value={printSettings.barcodeWidth} onChange={e => setPrintSettings({...printSettings, barcodeWidth: e.target.value})} style={{ width: '80px', marginBottom: 0 }} />
+                           <span>x</span>
+                           <input type="text" className="input" value={printSettings.barcodeHeight} onChange={e => setPrintSettings({...printSettings, barcodeHeight: e.target.value})} style={{ width: '80px', marginBottom: 0 }} />
+                        </div>
+                     </div>
+                     <button className="btn btn-primary" style={{ padding: '0 32px' }} onClick={handleSaveSettings}>บันทึกค่าบาร์โค้ด</button>
+                   </div>
+                 </div>
+              )}
+
             </div>
           </div>
         )}

@@ -204,6 +204,13 @@ export default function POS() {
 
   // Keypad & Payment Logic
   const handleKeypadPress = (val) => {
+    let maxLimit = Infinity;
+    if (currentMethod === 'storeCredit') {
+      const customer = customers.find(c => c.id === tempCustomerId);
+      const usedCredit = payments.filter(p => p.method === 'storeCredit').reduce((s, p) => s + p.amount, 0);
+      maxLimit = (customer?.storeCredit || 0) - usedCredit;
+    }
+
     if (val === 'clear') {
       setInputBuffer('');
       setCurrentAmount(0);
@@ -212,23 +219,48 @@ export default function POS() {
       if (!inputBuffer.includes('.')) setInputBuffer(prev => prev + '.');
     } else {
       const newBuffer = inputBuffer + val;
-      setInputBuffer(newBuffer);
-      setCurrentAmount(parseFloat(newBuffer) || 0);
+      const parsed = parseFloat(newBuffer) || 0;
+      
+      if (parsed > maxLimit) {
+        setCurrentAmount(maxLimit);
+        setInputBuffer(String(maxLimit));
+      } else {
+        setInputBuffer(newBuffer);
+        setCurrentAmount(parsed);
+      }
     }
   };
 
   const setExactAmount = () => {
     const totalNeeded = Math.max(0, getGrandTotal() - payments.reduce((sum, p) => sum + p.amount, 0));
-    setCurrentAmount(totalNeeded);
-    setInputBuffer(String(totalNeeded));
+    let finalAmount = totalNeeded;
+    
+    if (currentMethod === 'storeCredit') {
+      const customer = customers.find(c => c.id === tempCustomerId);
+      const usedCredit = payments.filter(p => p.method === 'storeCredit').reduce((s, p) => s + p.amount, 0);
+      const available = (customer?.storeCredit || 0) - usedCredit;
+      finalAmount = Math.min(totalNeeded, available);
+    }
+
+    setCurrentAmount(finalAmount);
+    setInputBuffer(String(finalAmount));
     setNoteCounts({ 1: 0, 2: 0, 5: 0, 10: 0, 20: 0, 50: 0, 100: 0, 500: 0, 1000: 0 });
   };
 
   const addCashNote = (amount) => {
-    setNoteCounts(prev => ({ ...prev, [amount]: prev[amount] + 1 }));
+    let maxLimit = Infinity;
+    if (currentMethod === 'storeCredit') {
+      const customer = customers.find(c => c.id === tempCustomerId);
+      const usedCredit = payments.filter(p => p.method === 'storeCredit').reduce((s, p) => s + p.amount, 0);
+      maxLimit = (customer?.storeCredit || 0) - usedCredit;
+    }
+
     const newAmount = currentAmount + amount;
-    setCurrentAmount(newAmount);
-    setInputBuffer(String(newAmount));
+    const finalAmount = Math.min(newAmount, maxLimit);
+
+    setNoteCounts(prev => ({ ...prev, [amount]: prev[amount] + 1 }));
+    setCurrentAmount(finalAmount);
+    setInputBuffer(String(finalAmount));
   };
 
   // Intercept the checkout button click
@@ -248,6 +280,19 @@ export default function POS() {
 
   const addPaymentEntry = () => {
     if (currentAmount <= 0) return;
+
+    if (currentMethod === 'storeCredit') {
+      const customerData = tempCustomerId ? customers.find(c => c.id === tempCustomerId) : null;
+      const currentCredit = customerData?.storeCredit || 0;
+      
+      const usedCredit = payments.filter(p => p.method === 'storeCredit').reduce((s, p) => s + p.amount, 0);
+      const remainingCredit = currentCredit - usedCredit;
+
+      if (currentAmount > remainingCredit) {
+         return alert(`⚠️ ยอดเครดิตวอลเล็ทไม่เพียงพอ! (คงเหลือให้ใช้ได้: ฿${remainingCredit.toLocaleString()})`);
+      }
+    }
+
     const newEntry = {
       id: Date.now() + Math.random(), // Ensure uniqueness
       method: currentMethod,
@@ -376,9 +421,12 @@ export default function POS() {
       });
       await Promise.all(productPromises);
 
-      // 2. Process Customer CRM update
+      // 2. Process Customer CRM update & Store Credit Deductions
       const targetId = directCustomerId || selectedCustomer;
       let customerInfo = { id: 'walk-in', name: 'Walk-in Customer' };
+      
+      const finalPayments = [...payments, ...(currentAmount > 0 ? [{ method: currentMethod, amount: currentAmount }] : [])];
+      
       if (targetId) {
         const customerData = customers.find(c => c.id === targetId);
         customerInfo = { id: customerData.id, name: customerData.name };
@@ -386,12 +434,29 @@ export default function POS() {
         const customerRef = doc(db, 'customers', targetId);
         const addedSpend = getGrandTotal();
         const earnedPoints = Math.floor(addedSpend / 100); 
-        await updateDoc(customerRef, {
+        
+        const updateObj = {
           totalSpend: increment(addedSpend),
           points: increment(earnedPoints),
           totalVisit: increment(1),
           lastVisit: serverTimestamp()
-        });
+        };
+        
+        const usedStoreCredit = finalPayments.filter(p => p.method === 'storeCredit').reduce((s, p) => s + p.amount, 0);
+        if (usedStoreCredit > 0) {
+           updateObj.storeCredit = increment(-usedStoreCredit);
+           
+           // Record usage log
+           await addDoc(collection(db, 'system_logs'), {
+             type: 'pos',
+             action: 'ใช้เครดิทจ่ายเงิน (POS Credit Pay)',
+             detail: `ใช้เครดิต ฿${usedStoreCredit.toLocaleString()} ชำระเงินบิล POS (${customerInfo.name})`,
+             operator: 'Admin Staff',
+             timestamp: serverTimestamp()
+           });
+        }
+        
+        await updateDoc(customerRef, updateObj);
       }
 
       // 3. Save Sales Report Document
@@ -420,7 +485,7 @@ export default function POS() {
         promotion_id: selectedPromotion || null,
         promotion_name: promoData ? promoData.name : null,
         grandTotal: getGrandTotal(),
-        payments: [...payments, ...(currentAmount > 0 ? [{ method: currentMethod, amount: currentAmount }] : [])],
+        payments: finalPayments,
         totalPaid: getPaidTotal(),
         changeAmount: Math.max(0, getPaidTotal() - getGrandTotal()),
         customer: customerInfo,
@@ -683,19 +748,33 @@ export default function POS() {
             </div>
 
             {/* Customer Selector (Compact) */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <div style={{ color: '#4A5568', flexShrink: 0 }} title="Customer"><User size={14} /></div>
-              <select 
-                className="input" 
-                style={{ margin: 0, padding: '4px 8px', fontSize: '11px', height: '32px', background: '#fff', border: '1px solid #E2E8F0', flex: 1 }} 
-                value={selectedCustomer} 
-                onChange={(e) => setSelectedCustomer(e.target.value)}
-              >
-                <option value="">Walk-in Customer (ลูกค้าทั่วไป)</option>
-                {customers.map(c => (
-                  <option key={c.id} value={c.id}>⭐ {c.name} - {c.phone}</option>
-                ))}
-              </select>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div style={{ color: '#4A5568', flexShrink: 0 }} title="Customer"><User size={14} /></div>
+                <select 
+                  className="input" 
+                  style={{ margin: 0, padding: '4px 8px', fontSize: '11px', height: '32px', background: '#fff', border: '1px solid #E2E8F0', flex: 1 }} 
+                  value={selectedCustomer} 
+                  onChange={(e) => setSelectedCustomer(e.target.value)}
+                >
+                  <option value="">Walk-in Customer (ลูกค้าทั่วไป)</option>
+                  {customers.map(c => (
+                    <option key={c.id} value={c.id}>⭐ {c.name} ({c.phone}) | 💰 ฿{(c.storeCredit || 0).toLocaleString()} | 🎯 {c.points || 0} pts</option>
+                  ))}
+                </select>
+              </div>
+              {selectedCustomer && (() => {
+                 const c = customers.find(x => x.id === selectedCustomer);
+                 if(!c) return null;
+                 return (
+                    <div style={{ display: 'flex', gap: '8px', padding: '4px 8px', background: '#E6FFFA', border: '1px solid #B2F5EA', borderRadius: '4px', marginLeft: '22px' }}>
+                       <div style={{ flex: 1, fontSize: '11px', color: '#285E61', display: 'flex', justifyContent: 'space-between' }}>
+                          <span><strong>💰 เครดิตเงินสด:</strong> <span style={{fontSize: '12px', fontWeight: 'bold'}}>฿{(c.storeCredit || 0).toLocaleString()}</span></span>
+                          <span><strong>🎯 แต้มสะสม:</strong> <span style={{fontSize: '12px', fontWeight: 'bold'}}>{(c.points || 0).toLocaleString()}</span></span>
+                       </div>
+                    </div>
+                 );
+              })()}
             </div>
           </div>
 

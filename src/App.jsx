@@ -16,6 +16,7 @@ import Employees from './pages/Employees';
 import PrintSettings from './pages/PrintSettings';
 import Login from './pages/Login';
 import Register from './pages/Register';
+import MemberDashboard from './pages/MemberDashboard';
 import { db } from './firebase';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 
@@ -29,8 +30,8 @@ const Sidebar = ({ permissions }) => {
     { path: '/crm', label: 'CRM & Customers', icon: Users, key: 'crm' },
     { path: '/employees', label: 'Employees', icon: UserCheck, key: 'employees' },
     { path: '/promotions', label: 'Promotions', icon: BadgePercent, key: 'promotions' },
+    { path: '/settings/print', label: '📄 บิล & 🏷️ บาร์โค้ด', icon: Printer, key: 'settings' },
     { path: '/reports', label: 'Reports & Logs', icon: FileText, key: 'reports' },
-    { path: '/settings/print', label: 'จัดการรูปแบบบิล', icon: Printer, key: 'settings' },
     { path: '/settings', label: 'Settings', icon: SettingsIcon, key: 'settings' },
   ];
 
@@ -184,8 +185,9 @@ function App() {
   return (
     <BrowserRouter>
       <Routes>
-        {/* Public Route: Registration */}
+        {/* Public Route: Registration & Member View */}
         <Route path="/register" element={<Register />} />
+        <Route path="/member/:phone" element={<MemberDashboard />} />
 
         {/* Private Routes Wrapper */}
         <Route path="*" element={
@@ -205,8 +207,8 @@ function App() {
                     <Route path="/crm" element={hasPermission('crm') ? <CRM /> : <Dashboard />} />
                     <Route path="/promotions" element={hasPermission('promotions') ? <Promotions /> : <Dashboard />} />
                     <Route path="/reports" element={hasPermission('reports') ? <Reports /> : <Dashboard />} />
-                    <Route path="/settings/print" element={hasPermission('settings') ? <PrintSettings /> : <Dashboard />} />
                     <Route path="/employees" element={hasPermission('employees') ? <Employees /> : <Dashboard />} />
+                    <Route path="/settings/print" element={hasPermission('settings') ? <PrintSettings /> : <Dashboard />} />
                     <Route path="/settings" element={hasPermission('settings') ? <Settings /> : <Dashboard />} />
                   </Routes>
                 </div>

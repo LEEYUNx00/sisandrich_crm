@@ -39,11 +39,15 @@ export default function Reports() {
   };
 
   const filteredLogs = logs.filter(log => {
-    const matchesSearch = log.action?.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                          log.detail?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          log.operator?.toLowerCase().includes(searchTerm.toLowerCase());
+    const actionText = log.action || '';
+    const detailText = log.detail || '';
+    const operatorText = log.operator || '';
+    
+    const matchesSearch = actionText.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                          detailText.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          operatorText.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesType = typeFilter === 'All' || log.type === typeFilter;
-    const matchesDate = !dateFilter || log.timestamp.toISOString().split('T')[0] === dateFilter;
+    const matchesDate = !dateFilter || (log.timestamp && log.timestamp.toISOString().split('T')[0] === dateFilter);
     return matchesSearch && matchesType && matchesDate;
   });
 

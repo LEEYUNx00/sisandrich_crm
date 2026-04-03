@@ -1,14 +1,17 @@
 import { useState, useEffect } from 'react';
 import { db } from '../firebase';
-import { collection, onSnapshot, addDoc, serverTimestamp, doc, updateDoc, deleteDoc, query, where, getDocs, orderBy } from 'firebase/firestore';
-import { Search, Plus, Filter, Download, Users, User, Star, Award, Crown, Gift, Calendar, Share2, Wallet, X, CheckCircle, Copy, Edit, Trash2, History, ChevronRight, ShoppingBag } from 'lucide-react';
+import { collection, onSnapshot, addDoc, serverTimestamp, doc, updateDoc, deleteDoc, query, where, getDocs, orderBy, setDoc } from 'firebase/firestore';
+import { Search, Plus, Filter, Download, Users, User, Star, Award, Crown, Gift, Calendar, Share2, Wallet, X, CheckCircle, Copy, Edit, Trash2, History, ChevronRight, ShoppingBag, Trophy, Banknote } from 'lucide-react';
 
 export default function CRM() {
   const [searchTerm, setSearchTerm] = useState('');
   const [customers, setCustomers] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState('list'); // 'list', 'ranking', 'config', 'wheel'
   
-  // Registration Modal State
+  // Spend Report Filter State
+  const [dateRange, setDateRange] = useState({ start: '', end: '' });
+  const [sortOrder, setSortOrder] = useState('desc');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState(null);
@@ -17,6 +20,29 @@ export default function CRM() {
   const [selectedHistoryCustomer, setSelectedHistoryCustomer] = useState(null);
   const [historyOrders, setHistoryOrders] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+
+  // Top-up State
+  const [isTopupModalOpen, setIsTopupModalOpen] = useState(false);
+  const [topupType, setTopupType] = useState('deposit');
+  const [topupCustomer, setTopupCustomer] = useState(null);
+  const [topupAmount, setTopupAmount] = useState('');
+  const [topupNotes, setTopupNotes] = useState('');
+
+  // App Settings State (Coupons, Tiers, Wheel)
+  const [membershipConfig, setMembershipConfig] = useState({ 
+    coupons: [
+      { id: 1, name: 'ส่วนลด 5% สินค้าใหม่', points: 100 },
+      { id: 2, name: 'คูปองเงินสด 500 บาท', points: 1000 }
+    ],
+    tierMultipliers: { VIP: 1, VVIP: 1.5, SVIP: 2, SSVIP: 3 } 
+  });
+  const [wheelConfig, setWheelConfig] = useState([
+    { id: 1, label: 'รางวัลที่ 1', probability: 20, active: true },
+    { id: 2, label: 'รางวัลที่ 2', probability: 20, active: true },
+    { id: 3, label: 'รางวัลที่ 3', probability: 20, active: true },
+    { id: 4, label: 'รางวัลที่ 4', probability: 20, active: true },
+    { id: 5, label: 'ขอบคุณที่ร่วมสนุก', probability: 20, active: true },
+  ]);
   
   // New Customer Form State
   const [formData, setFormData] = useState({
@@ -39,8 +65,37 @@ export default function CRM() {
       setLoading(false);
     });
 
+    // Load Configs
+    const loadConfigs = async () => {
+      const mDoc = await getDocs(query(collection(db, 'app_settings'), where('__name__', '==', 'membership')));
+      if (!mDoc.empty) setMembershipConfig(mDoc.docs[0].data());
+      
+      const wDoc = await getDocs(query(collection(db, 'app_settings'), where('__name__', '==', 'wheel')));
+      if (!wDoc.empty) setWheelConfig(wDoc.docs[0].data().segments);
+    };
+    loadConfigs();
+
     return () => unsubscribe();
   }, []);
+
+  const saveMembershipConfig = async (newConfig) => {
+    try {
+      const { id, ...data } = newConfig; // remove id if present
+      await setDoc(doc(db, 'app_settings', 'membership'), data);
+      alert("✅ บันทึกการตั้งค่าสิทธิประโยชน์สำเร็จ!");
+    } catch(err) {
+      alert("Error: " + err.message);
+    }
+  };
+
+  const saveWheelConfig = async (newSegments) => {
+    try {
+      await setDoc(doc(db, 'app_settings', 'wheel'), { segments: newSegments });
+      alert("✅ บันทึกข้อมูลวงล้อสำเร็จ!");
+    } catch(err) {
+      alert("Error: " + err.message);
+    }
+  };
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -60,7 +115,7 @@ export default function CRM() {
             return match ? parseInt(match[0]) : 0;
           })) + 1 
         : 1;
-      const memberId = `SSR${nextNum.toString().padStart(5, '0')}`;
+      const memberId = `MSR${nextNum.toString().padStart(4, '0')}`;
 
       const customerRef = await addDoc(collection(db, 'customers'), {
         memberId: memberId,
@@ -131,6 +186,49 @@ export default function CRM() {
       } catch(err) {
         alert("เกิดข้อผิดพลาดในการลบ: " + err.message);
       }
+    }
+  };
+
+  const handleTopupSubmit = async (e) => {
+    e.preventDefault();
+    if (!topupAmount || isNaN(topupAmount) || Number(topupAmount) <= 0) {
+       return alert('❌ กรุณากรอกจำนวนเงินให้ถูกต้อง');
+    }
+    
+    try {
+      const customerRef = doc(db, 'customers', topupCustomer.id);
+      const currentBalance = topupCustomer.storeCredit || 0;
+      const amountNum = Number(topupAmount);
+
+      if (topupType === 'withdraw' && amountNum > currentBalance) {
+         return alert(`❌ ยอดเงินไม่พอให้ถอน/ปรับลด (มีแค่ ฿${currentBalance.toLocaleString()})`);
+      }
+
+      const newCredit = topupType === 'deposit' 
+        ? currentBalance + amountNum 
+        : currentBalance - amountNum;
+        
+      await updateDoc(customerRef, {
+        storeCredit: newCredit,
+        updatedAt: serverTimestamp()
+      });
+
+      // Optionally record to system_logs or history collection
+      await addDoc(collection(db, 'system_logs'), {
+        type: 'crm',
+        action: topupType === 'deposit' ? 'เติมเครดิท (Deposit)' : 'ถอนเครดิท (Withdraw)',
+        detail: `${topupType === 'deposit' ? 'เติมเงิน' : 'ลดเงิน'} ฿${amountNum.toLocaleString()} ให้กับ ${topupCustomer.nickname || topupCustomer.name} (${topupNotes || 'ไม่มีหมายเหตุ'})`,
+        operator: 'Admin Staff',
+        timestamp: serverTimestamp()
+      });
+
+      alert(`✅ ${topupType === 'deposit' ? 'เติมเงิน' : 'ถอนเงิน/ปรับลดยอด'} จำนวน ฿${amountNum.toLocaleString()} เรียบร้อยแล้ว!`);
+      setIsTopupModalOpen(false);
+      setTopupAmount('');
+      setTopupNotes('');
+      setTopupType('deposit');
+    } catch(err) {
+      alert("เกิดข้อผิดพลาดในการทำรายการ: " + err.message);
     }
   };
 
@@ -213,18 +311,30 @@ export default function CRM() {
         {/* Header Section */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px' }}>
           <div>
-            <h2 style={{ fontSize: '24px', fontWeight: 'bold', color: '#1A202C', marginBottom: '4px' }}>รายชื่อสมาชิก (CRM & Members)</h2>
-            <p style={{ color: '#718096', fontSize: '14px' }}>ข้อมูลสมาชิกระดับต่างๆ ประวัติการใช้งาน และการตลาด</p>
+            <h2 style={{ fontSize: '26px', fontWeight: '950', color: '#1A202C', marginBottom: '6px', letterSpacing: '-0.5px' }}>Customer Relationship (CRM)</h2>
+            <p style={{ color: '#718096', fontSize: '14px' }}>ระบบบริหารจัดการลูกค้าสัมพันธ์และสิทธิประโยชน์สมาชิก</p>
           </div>
           <div style={{ display: 'flex', gap: '12px' }}>
-            <button className="btn btn-outline" style={{ display: 'flex', alignItems: 'center', gap: '8px' }} onClick={() => setShowLinkModal(true)}>
+            <button className="btn btn-outline" style={{ display: 'flex', alignItems: 'center', gap: '8px', border: '1px solid #E2E8F0', borderRadius: '12px' }} onClick={() => setShowLinkModal(true)}>
                <Share2 size={16} /> ลิงก์สมัครสมาชิก
             </button>
-            <button className="btn btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#047857' }} onClick={() => setIsModalOpen(true)}>
+            <button className="btn btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#047857', borderRadius: '12px', padding: '10px 20px', fontWeight: 'bold' }} onClick={() => setIsModalOpen(true)}>
                <Plus size={16} /> เริ่มสมัครสมาชิกใหม่
             </button>
           </div>
         </div>
+
+        {/* Tab Navigation */}
+        <div style={{ display: 'flex', gap: '10px', marginBottom: '24px', borderBottom: '1px solid #EDF2F7', paddingBottom: '12px' }}>
+          <TabButton active={activeTab === 'list'} icon={<Users size={18}/>} label="รายชื่อสมาชิก" onClick={() => setActiveTab('list')} />
+          <TabButton active={activeTab === 'ranking'} icon={<History size={18}/>} label="รายงานยอดใช้จ่าย" onClick={() => setActiveTab('ranking')} />
+          <TabButton active={activeTab === 'redemptions'} icon={<Gift size={18}/>} label="ประวัติการแลกแต้ม" onClick={() => setActiveTab('redemptions')} />
+          <TabButton active={activeTab === 'config'} icon={<Award size={18}/>} label="สิทธิประโยชน์" onClick={() => setActiveTab('config')} />
+          <TabButton active={activeTab === 'wheel'} icon={<Trophy size={18}/>} label="วงล้อนำโชค" onClick={() => setActiveTab('wheel')} />
+        </div>
+
+        {activeTab === 'list' && <>
+            <div className="animate-fade-in">
 
         {/* Dashboard Stats */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 4fr', gap: '16px', marginBottom: '20px' }}>
@@ -300,6 +410,7 @@ export default function CRM() {
                     <th style={{ padding: '12px 16px', borderBottom: '1px solid #E2E8F0' }}>ระดับ / เพศ</th>
                     <th style={{ padding: '12px 16px', borderBottom: '1px solid #E2E8F0', textAlign: 'right' }}>สรุปยอดซื้อ (Spend summary)</th>
                     <th style={{ padding: '12px 16px', borderBottom: '1px solid #E2E8F0', textAlign: 'right' }}>แต้มสะสม</th>
+                    <th style={{ padding: '12px 16px', borderBottom: '1px solid #E2E8F0', textAlign: 'right' }}>เครดิตเงินสด</th>
                     <th style={{ padding: '12px 16px', borderBottom: '1px solid #E2E8F0', textAlign: 'center' }}>จัดการ</th>
                   </tr>
                 </thead>
@@ -329,10 +440,10 @@ export default function CRM() {
                          </td>
                          <td style={{ padding: '12px 16px', textAlign: 'right' }}>
                             <div style={{ fontSize: '11px', color: '#4A5568', marginBottom: '2px' }}>
-                              <strong>Total Spent :</strong> {c.totalSpend?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} THB
+                              <strong>Total Spent :</strong> {c.totalSpend?.toLocaleString()} THB
                             </div>
                             <div style={{ fontSize: '11px', color: '#718096', marginBottom: '2px' }}>
-                              <strong>Avg. Spent :</strong> {avg.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} THB
+                              <strong>Avg. Spent :</strong> {avg.toLocaleString()} THB
                             </div>
                             <div style={{ fontSize: '11px', color: '#4A5568' }}>
                               <strong>Total Visit :</strong> {c.totalVisit || 0}
@@ -346,7 +457,12 @@ export default function CRM() {
                          </td>
                          <td style={{ padding: '12px 16px', textAlign: 'right' }}>
                             <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#D69E2E' }}>
-                              Total Point : {c.points?.toLocaleString() || 0}
+                              {c.points?.toLocaleString() || 0} <span style={{ fontSize: '10px' }}>PTS</span>
+                            </div>
+                         </td>
+                         <td style={{ padding: '12px 16px', textAlign: 'right' }}>
+                            <div style={{ fontSize: '14px', fontWeight: '900', color: '#38A169' }}>
+                              ฿{c.storeCredit?.toLocaleString() || 0}
                             </div>
                          </td>
                          <td style={{ padding: '12px 16px', textAlign: 'center' }}>
@@ -359,7 +475,8 @@ export default function CRM() {
                                >
                                  <History size={14} />
                                </button>
-                               <button className="btn-icon" onClick={() => { setEditingCustomer(c); setIsEditModalOpen(true); }} style={{ padding: '6px', background: '#EBF8FF', color: '#3182CE', border: '1px solid #BEE3F8' }}><Edit size={14} /></button>
+                               <button className="btn-icon" onClick={() => { setTopupCustomer(c); setIsTopupModalOpen(true); }} style={{ padding: '6px', background: '#FAF5FF', color: '#805AD5', border: '1px solid #E9D8FD' }} title="เติมเงิน (Top Up)"><Banknote size={14} /></button>
+                               <button className="btn-icon" onClick={() => { setEditingCustomer(c); setIsEditModalOpen(true); }} style={{ padding: '6px', background: '#EBF8FF', color: '#3182CE', border: '1px solid #BEE3F8' }} title="แก้ไขข้อมูล"><Edit size={14} /></button>
                                <button className="btn-icon" onClick={() => handleDeleteCustomer(c.id, c.nickname || c.name)} style={{ padding: '6px', background: '#FFF5F5', color: '#E53E3E', border: '1px solid #FED7D7' }}><Trash2 size={14} /></button>
                             </div>
                          </td>
@@ -367,10 +484,18 @@ export default function CRM() {
                     );
                   })}
                 </tbody>
-              </table>
+               </table>
             </div>
           )}
         </div>
+      </div>
+      </>
+    }
+
+        {activeTab === 'ranking' && <RankingTab customers={customers} />}
+        {activeTab === 'redemptions' && <RedemptionsTab />}
+        {activeTab === 'config' && <ConfigTab config={membershipConfig} onSave={(c) => { setMembershipConfig(c); saveMembershipConfig(c); }} />}
+        {activeTab === 'wheel' && <WheelTab config={wheelConfig} onSave={(w) => { setWheelConfig(w); saveWheelConfig(w); }} />}
       </div>
 
       {/* --- ADD MODAL --- */}
@@ -501,10 +626,14 @@ export default function CRM() {
               <div style={{ padding: '32px', maxHeight: '70vh', overflowY: 'auto' }}>
                  
                  {/* Quick Summary Row */}
-                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px', marginBottom: '24px' }}>
+                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', marginBottom: '24px' }}>
                     <div style={{ padding: '16px', background: '#F0FFF4', borderRadius: '16px', border: '1px solid #C6F6D5' }}>
                        <div style={{ fontSize: '11px', color: '#38A169', fontWeight: 'bold', marginBottom: '4px' }}>ยอดซื้อรวม (CUMULATIVE)</div>
                        <div style={{ fontSize: '20px', fontWeight: '900', color: '#2F855A' }}>฿{selectedHistoryCustomer.totalSpend?.toLocaleString()}</div>
+                    </div>
+                    <div style={{ padding: '16px', background: '#FAF5FF', borderRadius: '16px', border: '1px solid #E9D8FD' }}>
+                       <div style={{ fontSize: '11px', color: '#805AD5', fontWeight: 'bold', marginBottom: '4px' }}>เครดิตคงเหลือ (CREDIT)</div>
+                       <div style={{ fontSize: '20px', fontWeight: '900', color: '#6B46C1' }}>฿{selectedHistoryCustomer.storeCredit?.toLocaleString() || '0'}</div>
                     </div>
                     <div style={{ padding: '16px', background: '#EBF8FF', borderRadius: '16px', border: '1px solid #BEE3F8' }}>
                        <div style={{ fontSize: '11px', color: '#3182CE', fontWeight: 'bold', marginBottom: '4px' }}>แต้มปัจจุบัน (POINTS)</div>
@@ -600,6 +729,384 @@ export default function CRM() {
            </div>
         </div>
       )}
+
+      {/* --- STORE CREDIT MODAL --- */}
+      {isTopupModalOpen && topupCustomer && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(4px)' }}>
+           <div className="card animate-slide-in" style={{ width: '450px', background: 'white', padding: 0, borderRadius: '16px', overflow: 'hidden' }}>
+              <div style={{ padding: '20px 24px', background: topupType === 'deposit' ? '#FAF5FF' : '#FFF5F5', borderBottom: '1px solid', borderColor: topupType === 'deposit' ? '#E9D8FD' : '#FED7D7', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                   <div style={{ background: topupType === 'deposit' ? '#805AD5' : '#E53E3E', padding: '6px', borderRadius: '8px', color: 'white' }}><Banknote size={20} /></div>
+                   <h2 style={{ fontSize: '18px', fontWeight: 'bold', color: topupType === 'deposit' ? '#553C9A' : '#9B2C2C', margin: 0 }}>จัดการเครดิตเงินสด</h2>
+                 </div>
+                 <button onClick={() => setIsTopupModalOpen(false)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#94A3B8' }}><X size={20} /></button>
+              </div>
+              
+              <div style={{ padding: '24px', background: '#F7FAFC', borderBottom: '1px solid #EDF2F7' }}>
+                 <div style={{ fontSize: '12px', color: '#718096', fontWeight: 'bold', marginBottom: '4px' }}>สมาชิก (MEMBER)</div>
+                 <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#2D3748' }}>{topupCustomer.nickname || topupCustomer.name} <span style={{ fontSize: '12px', color: '#A0AEC0' }}>({topupCustomer.phone})</span></div>
+                 <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '12px', padding: '12px', background: 'white', borderRadius: '12px', border: '1px dashed #CBD5E0' }}>
+                    <div style={{ fontSize: '12px', color: '#718096', fontWeight: 'bold' }}>ยอดคงเหลือเดิม:</div>
+                    <div style={{ fontSize: '14px', fontWeight: '900', color: '#38A169' }}>฿{topupCustomer.storeCredit?.toLocaleString() || 0}</div>
+                 </div>
+              </div>
+
+              <form onSubmit={handleTopupSubmit} style={{ padding: '24px' }}>
+                 <div style={{ display: 'flex', gap: '12px', marginBottom: '20px' }}>
+                     <button type="button" onClick={() => setTopupType('deposit')} style={{ flex: 1, padding: '10px', borderRadius: '8px', border: topupType === 'deposit' ? '2px solid #805AD5' : '1px solid #EDF2F7', background: topupType === 'deposit' ? '#FAF5FF' : 'white', color: topupType === 'deposit' ? '#805AD5' : '#718096', fontWeight: 'bold', cursor: 'pointer', transition: 'all 0.2s' }}>➕ เติมเงิน</button>
+                     <button type="button" onClick={() => setTopupType('withdraw')} style={{ flex: 1, padding: '10px', borderRadius: '8px', border: topupType === 'withdraw' ? '2px solid #E53E3E' : '1px solid #EDF2F7', background: topupType === 'withdraw' ? '#FFF5F5' : 'white', color: topupType === 'withdraw' ? '#E53E3E' : '#718096', fontWeight: 'bold', cursor: 'pointer', transition: 'all 0.2s' }}>➖ ถอนเงิน/ลด</button>
+                 </div>
+                 <div style={{ marginBottom: '16px' }}>
+                    <label style={{ display: 'block', fontSize: '13px', fontWeight: 'bold', color: '#4A5568', marginBottom: '8px' }}>จำนวนเงิน (บาท) *</label>
+                    <input type="number" className="input" autoFocus placeholder="ระบุจำนวนเงิน..." value={topupAmount} onChange={e => setTopupAmount(e.target.value)} required style={{ fontSize: '20px', fontWeight: 'bold', textAlign: 'center', height: '56px' }} />
+                 </div>
+                 <div style={{ marginBottom: '24px' }}>
+                    <label style={{ display: 'block', fontSize: '13px', fontWeight: 'bold', color: '#4A5568', marginBottom: '8px' }}>หมายเหตุ (ตัวเลือก)</label>
+                    <input type="text" className="input" placeholder={topupType === 'deposit' ? "เช่น โบนัสโปรโมชั่น..." : "เช่น ลูกค้าขอคืนเงิน, ตั้งค่าผิดพลาด..."} value={topupNotes} onChange={e => setTopupNotes(e.target.value)} />
+                 </div>
+                 <div style={{ display: 'flex', gap: '12px' }}>
+                    <button type="button" className="btn btn-outline" style={{ flex: 1 }} onClick={() => setIsTopupModalOpen(false)}>ยกเลิก</button>
+                    <button type="submit" className="btn" style={{ flex: 2, background: topupType === 'deposit' ? '#805AD5' : '#E53E3E', color: 'white', fontWeight: 'bold' }}>{topupType === 'deposit' ? 'ยืนยันการเติมเงิน' : 'ยืนยันการถอน/ปรับลด'}</button>
+                 </div>
+              </form>
+           </div>
+        </div>
+      )}
+
     </>
   );
 }
+// --- NEW TAB COMPONENTS ---
+
+const TabButton = ({ active, icon, label, onClick }) => (
+  <button 
+    onClick={onClick}
+    style={{ 
+      display: 'flex', 
+      alignItems: 'center', 
+      gap: '8px', 
+      padding: '10px 16px', 
+      border: 'none', 
+      background: active ? '#EBF8FF' : 'transparent', 
+      color: active ? '#2B6CB0' : '#718096', 
+      borderRadius: '10px', 
+      fontSize: '14px', 
+      fontWeight: active ? '900' : 'normal',
+      cursor: 'pointer',
+      transition: 'all 0.3s'
+    }}
+  >
+    {icon} {label}
+  </button>
+);
+
+const RankingTab = ({ customers }) => {
+  const [dateRange, setDateRange] = useState({ start: '', end: '' });
+  const [displayCustomers, setDisplayCustomers] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const applyRanking = async () => {
+      setLoading(true);
+      
+      // If no date range, use pre-calculated totalSpend from customer doc
+      if (!dateRange.start && !dateRange.end) {
+        const sorted = [...customers].sort((a, b) => (b.totalSpend || 0) - (a.totalSpend || 0));
+        setDisplayCustomers(sorted);
+        setLoading(false);
+        return;
+      }
+
+      try {
+        // If date range provided, we MUST aggregate from sales since totalSpend is all-time
+        const start = dateRange.start ? new Date(dateRange.start + 'T00:00:00') : new Date(0);
+        const end = dateRange.end ? new Date(dateRange.end + 'T23:59:59') : new Date();
+
+        const q = query(
+          collection(db, 'sales'),
+          where('timestamp', '>=', start),
+          where('timestamp', '<=', end)
+        );
+        
+        const snapshot = await getDocs(q);
+        const spendMap = {};
+        
+        snapshot.docs.forEach(doc => {
+          const data = doc.data();
+          const cid = data.customer?.id;
+          if (cid) {
+            spendMap[cid] = (spendMap[cid] || 0) + (data.grandTotal || 0);
+          }
+        });
+
+        const aggregated = customers.map(c => ({
+          ...c,
+          periodSpend: spendMap[c.id] || 0
+        })).sort((a, b) => b.periodSpend - a.periodSpend);
+
+        setDisplayCustomers(aggregated);
+      } catch (err) {
+        console.error("Aggregation error:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    applyRanking();
+  }, [customers, dateRange]);
+
+  return (
+    <div className="animate-fade-in card" style={{ padding: '24px', background: 'white', borderRadius: '16px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+        <div>
+           <h3 style={{ fontSize: '18px', fontWeight: 'bold' }}>อันดับยอดซื้อสะสม (Top Spenders)</h3>
+           <p style={{ fontSize: '12px', color: '#718096' }}>{dateRange.start ? `ตั้งแต่วันที่ ${dateRange.start} ถึง ${dateRange.end || 'วันนี้'}` : 'ข้อมูลทั้งหมด (All-time)'}</p>
+        </div>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+           <input 
+             type="date" 
+             className="input" 
+             style={{ width: '150px', marginBottom: 0 }} 
+             onChange={(e) => setDateRange(prev => ({ ...prev, start: e.target.value }))}
+             value={dateRange.start}
+           />
+           <span style={{ color: '#E2E8F0' }}>–</span>
+           <input 
+             type="date" 
+             className="input" 
+             style={{ width: '150px', marginBottom: 0 }} 
+             onChange={(e) => setDateRange(prev => ({ ...prev, end: e.target.value }))}
+             value={dateRange.end}
+           />
+           <button className="btn btn-outline" onClick={() => setDateRange({ start: '', end: '' })}>ล้างค่า</button>
+        </div>
+      </div>
+
+      <div style={{ overflowX: 'auto' }}>
+        {loading ? (
+           <div style={{ textAlign: 'center', padding: '40px', color: '#A0AEC0' }}>กำลังคำนวณสถิติ...</div>
+        ) : (
+          <table className="table" style={{ width: '100%', textAlign: 'left' }}>
+            <thead>
+              <tr style={{ background: '#F7FAFC' }}>
+                <th style={{ padding: '12px' }}>อันดับ</th>
+                <th style={{ padding: '12px' }}>สมาชิก</th>
+                <th style={{ padding: '12px' }}>เบอร์โทร</th>
+                <th style={{ padding: '12px', textAlign: 'right' }}>ยอดซื้อ {dateRange.start ? 'ในช่วงเวลา' : 'สะสม'}</th>
+                <th style={{ padding: '12px', textAlign: 'right' }}>แต้มปัจจุบัน</th>
+              </tr>
+            </thead>
+            <tbody>
+              {displayCustomers.filter(c => (dateRange.start ? c.periodSpend > 0 : true)).slice(0, 50).map((c, idx) => (
+                <tr key={c.id} style={{ borderBottom: '1px solid #EDF2F7' }}>
+                  <td style={{ padding: '12px' }}>
+                    <div style={{ 
+                      width: '28px', height: '28px', borderRadius: '50%', 
+                      background: idx === 0 ? '#FECC2F' : (idx === 1 ? '#C0C0C0' : (idx === 2 ? '#CD7F32' : '#F7FAFC')),
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '12px',
+                      color: idx < 3 ? '#fff' : '#4A5568'
+                    }}>
+                      {idx + 1}
+                    </div>
+                  </td>
+                  <td style={{ padding: '12px' }}>
+                     <div style={{ fontWeight: 'bold' }}>{c.nickname || c.name}</div>
+                     <div style={{ fontSize: '10px', color: '#A0AEC0' }}>{c.memberId}</div>
+                  </td>
+                  <td style={{ padding: '12px' }}>{c.phone}</td>
+                  <td style={{ padding: '12px', textAlign: 'right', fontWeight: '900', color: '#2B6CB0' }}>
+                    ฿{(dateRange.start ? c.periodSpend : c.totalSpend)?.toLocaleString()}
+                  </td>
+                  <td style={{ padding: '12px', textAlign: 'right' }}>{c.points?.toLocaleString()} pts</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  );
+};
+
+const ConfigTab = ({ config, onSave }) => {
+  const [local, setLocal] = useState(config);
+  
+  return (
+    <div className="animate-fade-in card" style={{ padding: '32px', background: 'white', borderRadius: '16px' }}>
+      <h3 style={{ fontSize: '20px', fontWeight: 'bold', marginBottom: '24px' }}>จัดการสิทธิประโยชน์สมาชิก (SIS&RICH MEMBER)</h3>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '24px' }}>
+         <div style={{ border: '1px solid #E2E8F0', padding: '20px', borderRadius: '16px' }}>
+            <h4 style={{ fontSize: '16px', fontWeight: 'bold', marginBottom: '16px', color: '#8B0000' }}>รายการคูปองส่วนลด</h4>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '20px' }}>
+               {local.coupons.map((cp, idx) => (
+                 <div key={idx} style={{ padding: '12px', background: '#F7FAFC', borderRadius: '12px', border: '1px solid #EDF2F7', display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <input type="text" className="input" style={{ marginBottom: 0, flex: 2 }} value={cp.name} 
+                      onChange={e => {
+                        const newC = [...local.coupons];
+                        newC[idx].name = e.target.value;
+                        setLocal({...local, coupons: newC});
+                      }}
+                    />
+                    <input type="number" className="input" style={{ marginBottom: 0, flex: 1 }} value={cp.points} 
+                      onChange={e => {
+                        const newC = [...local.coupons];
+                        newC[idx].points = parseInt(e.target.value);
+                        setLocal({...local, coupons: newC});
+                      }}
+                    />
+                    <span style={{ fontSize: '10px' }}>pts</span>
+                 </div>
+               ))}
+            </div>
+            <button className="btn btn-outline" style={{ width: '100%' }} onClick={() => setLocal({...local, coupons: [...local.coupons, {name: 'คูปองใหม่', points: 500}]})}><Plus size={14} /> เพิ่มคูปองใหม่</button>
+         </div>
+
+         <div style={{ border: '1px solid #E2E8F0', padding: '20px', borderRadius: '16px' }}>
+            <h4 style={{ fontSize: '16px', fontWeight: 'bold', marginBottom: '16px', color: '#D4AF37' }}>เกณฑ์การสะสมยอด (Tier Multiplier)</h4>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+               {Object.entries(local.tierMultipliers).map(([tier, val]) => (
+                 <div key={tier} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '14px', width: '60px' }}>{tier} :</span>
+                    <input type="number" step="0.1" className="input" value={val} style={{ width: '80px', marginBottom: 0 }} 
+                       onChange={e => {
+                         const newT = {...local.tierMultipliers, [tier]: parseFloat(e.target.value)};
+                         setLocal({...local, tierMultipliers: newT});
+                       }}
+                    />
+                    <span style={{ width: '40px', fontSize: '12px' }}>เท่า</span>
+                 </div>
+               ))}
+            </div>
+            <button className="btn btn-primary" style={{ width: '100%', marginTop: '30px', background: '#D4AF37' }} onClick={() => onSave(local)}>บันทึกการตั้งค่า</button>
+         </div>
+      </div>
+    </div>
+  );
+};
+
+const WheelTab = ({ config, onSave }) => {
+  const [local, setLocal] = useState(config);
+  
+  return (
+    <div className="animate-fade-in card" style={{ padding: '32px', background: 'white', borderRadius: '16px' }}>
+      <h3 style={{ fontSize: '20px', fontWeight: 'bold', marginBottom: '24px' }}>ตั้งค่าวงล้อลุ้นโชค (Lucky Wheel Configuration)</h3>
+      <table className="table" style={{ width: '100%', textAlign: 'left' }}>
+        <thead>
+          <tr style={{ background: '#F7FAFC' }}>
+            <th style={{ padding: '12px' }}>ชิ้นส่วน (Segment)</th>
+            <th style={{ padding: '12px' }}>ข้อความรางวัล</th>
+            <th style={{ padding: '12px' }}>โอกาสได้รับ (%)</th>
+            <th style={{ padding: '12px' }}>สถานะ</th>
+          </tr>
+        </thead>
+        <tbody>
+          {local.map((seg, idx) => (
+            <tr key={idx}>
+              <td style={{ padding: '12px' }}>ช่องที่ {idx + 1}</td>
+              <td style={{ padding: '12px' }}>
+                 <input type="text" className="input" style={{ marginBottom: 0 }} value={seg.label} 
+                   onChange={e => {
+                     const newL = [...local];
+                     newL[idx].label = e.target.value;
+                     setLocal(newL);
+                   }}
+                 />
+              </td>
+              <td style={{ padding: '12px' }}>
+                 <input type="number" className="input" style={{ width: '100px', marginBottom: 0 }} value={seg.probability} 
+                   onChange={e => {
+                     const newL = [...local];
+                     newL[idx].probability = parseInt(e.target.value);
+                     setLocal(newL);
+                   }}
+                 />
+              </td>
+              <td style={{ padding: '12px' }}>
+                 <button 
+                   style={{ background: 'transparent', border: 'none', color: seg.active ? '#38A169' : '#E53E3E', fontWeight: 'bold', cursor: 'pointer' }}
+                   onClick={() => {
+                     const newL = [...local];
+                     newL[idx].active = !newL[idx].active;
+                     setLocal(newL);
+                   }}
+                 >
+                   {seg.active ? 'เปิดใช้งาน' : 'ปิดใช้งาน'}
+                 </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div style={{ marginTop: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+         <div style={{ fontSize: '14px', color: '#E53E3E', fontWeight: 'bold' }}>
+            รวมโอกาส: {local.reduce((sum, s) => sum + s.probability, 0)}% (ควรเท่ากับ 100%)
+         </div>
+         <button className="btn btn-primary" style={{ background: '#8B0000', width: '200px' }} onClick={() => onSave(local)}>บันทึกข้อมูลวงล้อ</button>
+      </div>
+    </div>
+  );
+};
+
+const RedemptionsTab = () => {
+  const [redemptions, setRedemptions] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const q = query(collection(db, 'redemptions'), orderBy('timestamp', 'desc'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      setRedemptions(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      setLoading(false);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  return (
+    <div className="animate-fade-in card" style={{ padding: '24px', background: 'white', borderRadius: '16px' }}>
+      <h3 style={{ fontSize: '18px', fontWeight: 'bold', marginBottom: '24px' }}>ประวัติการใช้คะแนนแลกสิทธิพิเศษ</h3>
+      
+      <div style={{ overflowX: 'auto' }}>
+        {loading ? (
+          <div style={{ textAlign: 'center', padding: '40px', color: '#A0AEC0' }}>กำลังโหลดข้อมูล...</div>
+        ) : (
+          <table className="table" style={{ width: '100%', textAlign: 'left' }}>
+            <thead>
+              <tr style={{ background: '#F7FAFC' }}>
+                <th style={{ padding: '12px' }}>วัน-เวลา</th>
+                <th style={{ padding: '12px' }}>สมาชิก</th>
+                <th style={{ padding: '12px', textAlign: 'center' }}>รหัสยืนยัน</th>
+                <th style={{ padding: '12px' }}>สิทธิที่แลก</th>
+                <th style={{ padding: '12px', textAlign: 'right' }}>คะแนนที่ใช้</th>
+                <th style={{ padding: '12px', textAlign: 'center' }}>สถานะ</th>
+              </tr>
+            </thead>
+            <tbody>
+              {redemptions.map((r, idx) => (
+                <tr key={r.id} style={{ borderBottom: '1px solid #EDF2F7' }}>
+                  <td style={{ padding: '12px', fontSize: '13px', whiteSpace: 'nowrap' }}>
+                    {r.timestamp?.toDate ? r.timestamp.toDate().toLocaleString('th-TH') : '-'}
+                  </td>
+                  <td style={{ padding: '12px' }}>
+                    <div style={{ fontWeight: 'bold' }}>{r.customerName}</div>
+                  </td>
+                   <td style={{ padding: '12px', textAlign: 'center' }}>
+                    <code style={{ background: '#EDF2F7', padding: '4px 8px', borderRadius: '4px', fontStyle: 'normal' }}>{r.claimCode}</code>
+                  </td>
+                  <td style={{ padding: '12px' }}>{r.couponName}</td>
+                  <td style={{ padding: '12px', textAlign: 'right', fontWeight: 'bold', color: '#E53E3E' }}>
+                    -{r.pointsUsed} pts
+                  </td>
+                  <td style={{ padding: '12px', textAlign: 'center' }}>
+                    <span style={{ 
+                      fontSize: '11px', fontWeight: 'bold', padding: '4px 10px', borderRadius: '20px',
+                      background: '#C6F6D5', color: '#2F855A'
+                    }}>แลกแล้ว</span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  );
+};

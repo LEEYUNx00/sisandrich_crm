@@ -26,7 +26,10 @@ export default function ProductListView({
   const [loadingLogs, setLoadingLogs] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [previewImage, setPreviewImage] = useState(null);
+  
+  // Printing State
   const [printingProduct, setPrintingProduct] = useState(null);
+  const [printForm, setPrintForm] = useState({ name: '', sku: '', price: '', qty: 3 });
   const [printSettings, setPrintSettings] = useState({
     barcodeWidth: '32mm',
     barcodeHeight: '25mm',
@@ -186,11 +189,17 @@ export default function ProductListView({
   };
 
   const handlePrintLabel = (p) => {
+    setPrintForm({
+      name: p.name || '',
+      sku: p.barcode || p.sku || '',
+      price: p.price || '',
+      qty: 3
+    });
     setPrintingProduct(p);
-    setTimeout(() => {
-      window.print();
-      setPrintingProduct(null);
-    }, 150);
+  };
+
+  const executePrint = () => {
+    window.print();
   };
 
   const handleApplyAllStockModeTrigger = (e) => {
@@ -292,7 +301,7 @@ export default function ProductListView({
               background: white;
             }
             .barcode-item {
-              width: 32mm;
+              width: 33mm; /* ขยับเพื่อให้ลงตัวกับกระดาษ 3 ดวง */
               height: 25mm;
               display: flex !important; flex-direction: column;
               align-items: center; justify-content: center;
@@ -303,16 +312,16 @@ export default function ProductListView({
             }
             .barcode-text { 
               font-family: 'Libre Barcode 39 Text', cursive !important; 
-              font-size: 24px !important; 
-              margin: -2px 0; 
+              font-size: 26px !important; 
+              margin: -1px 0; 
               line-height: 1;
-              transform: scaleX(0.75); /* บีบบาร์โค้ดให้แคบลง 25% เพื่อไม่ให้ล้นสติกเกอร์ */
+              transform: scaleX(0.7);
               transform-origin: center;
               white-space: nowrap;
             }
-            .barcode-info { font-size: 9px; font-weight: bold; width: 100%; border-bottom: 0.5px solid #000; margin-bottom: 1px; }
-            .barcode-code { font-size: 8px; letter-spacing: 1px; }
-            .barcode-shop { font-size: 7px; font-weight: bold; text-transform: uppercase; }
+            .barcode-price { font-size: 11px; font-weight: 900; width: 100%; border-top: 0.5px solid #000; padding-top: 1px; margin-top: 1px; }
+            .barcode-code { font-size: 8px; font-weight: bold; }
+            .barcode-shop { font-size: 7px; font-weight: bold; opacity: 0.8; }
           }
         `}
       </style>
@@ -531,16 +540,68 @@ export default function ProductListView({
         </div>
       )}
 
+      {/* PRINT LABEL MODAL (TSC TTP) */}
+      {printingProduct && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 3000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div className="card animate-slide-in" style={{ width: '450px', padding: 0, background: '#fff', borderRadius: '16px', overflow: 'hidden' }}>
+             <div style={{ padding: '20px', background: '#F7FAFC', borderBottom: '1px solid #EDF2F7', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <h3 style={{ fontSize: '18px', fontWeight: 'bold' }}>🏷️ สร้างบาร์โค้ดด่วน (Quick Label)</h3>
+                <button onClick={() => setPrintingProduct(null)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X size={20} /></button>
+             </div>
+             
+             <div style={{ padding: '24px' }}>
+                <div style={{ marginBottom: '16px' }}>
+                   <label style={{ display: 'block', fontSize: '13px', fontWeight: 'bold', marginBottom: '6px' }}>ข้อความ/ชื่อสินค้า (บนสติกเกอร์)</label>
+                   <input type="text" className="input" value={printForm.name} onChange={e => setPrintForm({...printForm, name: e.target.value})} />
+                </div>
+                
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
+                   <div>
+                      <label style={{ display: 'block', fontSize: '13px', fontWeight: 'bold', marginBottom: '6px' }}>รหัส (Barcode)</label>
+                      <input type="text" className="input" value={printForm.sku} onChange={e => setPrintForm({...printForm, sku: e.target.value})} />
+                   </div>
+                   <div>
+                      <label style={{ display: 'block', fontSize: '13px', fontWeight: 'bold', marginBottom: '6px' }}>ราคา (Price)</label>
+                      <input type="number" className="input" value={printForm.price} onChange={e => setPrintForm({...printForm, price: e.target.value})} />
+                   </div>
+                </div>
+
+                <div style={{ marginBottom: '24px' }}>
+                   <label style={{ display: 'block', fontSize: '13px', fontWeight: 'bold', marginBottom: '6px' }}>จำนวนดวงที่ต้องการ (ชุดละ 3 ดวง)</label>
+                   <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <input type="range" min="3" max="99" step="3" style={{ flex: 1 }} value={printForm.qty} onChange={e => setPrintForm({...printForm, qty: Number(e.target.value)})} />
+                      <span style={{ fontSize: '18px', fontWeight: 'bold', minWidth: '40px' }}>{printForm.qty}</span>
+                   </div>
+                </div>
+
+                <div style={{ display: 'flex', gap: '12px' }}>
+                   <button type="button" className="btn btn-outline" style={{ flex: 1 }} onClick={() => setPrintingProduct(null)}>ยกเลิก</button>
+                   <button type="button" className="btn btn-primary" style={{ flex: 2, background: '#2D3748' }} onClick={executePrint}>
+                      <Printer size={18} /> พิมพ์สติกเกอร์ทันที
+                   </button>
+                </div>
+             </div>
+          </div>
+        </div>
+      )}
+
       {/* Hidden Barcode Label for Printing (Three per row for TSC 3-across paper) */}
       {printingProduct && (
-        <div className="barcode-print-row" style={{ position: 'fixed', left: '-9999px', top: '-9999px', pointerEvents: 'none' }}>
-           {[0, 1, 2].map((i) => (
+        <div 
+          className="barcode-print-row" 
+          style={{ 
+            display: 'none', /* Hidden by style tag above during normal view */
+            width: '102mm',
+            flexWrap: 'wrap'
+          }}
+        >
+           {[...Array(printForm.qty)].map((_, i) => (
               <div key={i} className="barcode-item">
-                 {printSettings.showShopNameOnBarcode && <div style={{ fontSize: '7px', fontWeight: 'bold' }}>{printSettings.shopName}</div>}
-                 <div style={{ fontSize: '8.5px', fontWeight: 'bold' }}>{printingProduct.barcode || printingProduct.sku}</div>
-                 <div className="barcode-text">*{printingProduct.barcode || printingProduct.sku}*</div>
-                 <div style={{ fontSize: '11px', fontWeight: '900', borderTop: '0.4px solid #000', width: '100%', marginTop: '1px', paddingTop: '1px' }}>
-                   {printingProduct.price ? `${Number(printingProduct.price).toLocaleString()} .-` : '0.-'}
+                 {printSettings.showShopNameOnBarcode && <div className="barcode-shop">{printSettings.shopName}</div>}
+                 <div className="barcode-code">{printForm.sku}</div>
+                 <div className="barcode-text">*{printForm.sku}*</div>
+                 <div className="barcode-price">
+                   {Number(printForm.price).toLocaleString()} .-
                  </div>
               </div>
            ))}
