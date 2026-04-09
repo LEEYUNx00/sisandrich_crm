@@ -7,7 +7,11 @@ const path = require('path');
 const app = express();
 const PORT = 8000;
 
-app.use(cors());
+app.use(cors({
+    origin: '*',
+    methods: ['GET', 'POST', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization']
+}));
 app.use(express.json({ limit: '100mb' }));
 
 console.log('--- SiS & RICH Printer Bridge (V3: AUTO-CUT ENABLED) ---');
@@ -34,14 +38,24 @@ app.post('/print-receipt', (req, res) => {
         $pd.DefaultPageSettings.Margins = New-Object System.Drawing.Printing.Margins(0,0,0,0);
         $pd.add_PrintPage({
             $ev = $args[1];
-            $ev.Graphics.DrawImage($image, 0, 0);
+
+            if ($pd.PrinterSettings.PrinterName -like '*TSC*' -or $pd.PrinterSettings.PrinterName -like '*Label*') {
+                $ev.Graphics.DrawImage($image, 0, 0, $image.Width / 1.5, $image.Height / 1.5);
+            } else {
+                $targetWidth = $ev.PageBounds.Width;
+                $factor = $targetWidth / $image.Width;
+                $targetHeight = $image.Height * $factor;
+                $ev.Graphics.DrawImage($image, 0, 0, [int]$targetWidth, [int]$targetHeight);
+            }
             $ev.HasMorePages = $false;
         });
         $pd.Print();
         $image.Dispose();
 
-        # ✂️ คำสั่งตัดกระดาษโดยตรง (Raw ESC/POS Cut Command: GS V 0)
-        [char]29 + [char]86 + [char]48 | Out-Printer -Name '${actualPrinter}';
+
+        $lineFeed = [char]10 + [char]10 + [char]10 + [char]10 + [char]10;
+        $cutCommand = [char]29 + [char]86 + [char]66 + [char]0;
+        $lineFeed + $cutCommand | Out-Printer -Name '${actualPrinter}';
     `.replace(/\n/g, ' ').trim();
 
     exec(`powershell -Command "${psCommand}"`, (error) => {

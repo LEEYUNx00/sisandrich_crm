@@ -108,21 +108,17 @@ export default function ReceiptModal({ receiptData, onClose, onPrint }) {
           <div style={{ display: 'flex' }}><span style={{ width: '90px' }}>Date:</span> {receiptData.printedDate?.toLocaleString('th-TH') || new Date().toLocaleString('th-TH')}</div>
           <div style={{ display: 'flex' }}><span style={{ width: '90px' }}>Receipt No.:</span> {receiptData.billId || receiptData.id.slice(0, 8).toUpperCase()}</div>
           <div style={{ display: 'flex' }}><span style={{ width: '90px' }}>Cashier:</span> {receiptData.staff || 'Admin'}</div>
-          {receiptData.seller?.name && (
-            <div style={{ display: 'flex' }}><span style={{ width: '90px' }}>Ref:</span> {receiptData.seller.name}</div>
-          )}
-          {receiptData.customer?.name && (
-            <div style={{ display: 'flex' }}><span style={{ width: '90px' }}>Member:</span> {receiptData.customer.nickname || receiptData.customer.name}</div>
-          )}
+          <div style={{ display: 'flex' }}><span style={{ width: '90px' }}>Ref:</span> {receiptData.seller?.name || 'General Staff'}</div>
+          <div style={{ display: 'flex' }}><span style={{ width: '90px' }}>Member:</span> {receiptData.customer?.name ? (receiptData.customer.nickname || receiptData.customer.name) : 'ลูกค้าทั่วไป (General)'}</div>
         </div>
 
         <div style={{ textAlign: 'center', letterSpacing: '-1px', marginBottom: '5px' }}>==========================================</div>
         
         <div style={{ display: 'flex', fontWeight: 'bold', fontSize: '1em', marginBottom: '5px' }}>
           <div style={{ flex: 1 }}>Items/Services</div>
-          <div style={{ width: '50px', flexShrink: 0, textAlign: 'right' }}>Qty.</div>
-          <div style={{ width: '70px', flexShrink: 0, textAlign: 'right' }}>Price</div>
-          <div style={{ width: '80px', flexShrink: 0, textAlign: 'right' }}>Total</div>
+          <div style={{ width: '40px', flexShrink: 0, textAlign: 'right' }}>Qty.</div>
+          <div style={{ width: '60px', flexShrink: 0, textAlign: 'right' }}>Price</div>
+          <div style={{ width: '65px', flexShrink: 0, textAlign: 'right' }}>Total</div>
         </div>
 
         <div style={{ textAlign: 'center', letterSpacing: '-1px', marginBottom: '5px' }}>==========================================</div>
@@ -130,11 +126,11 @@ export default function ReceiptModal({ receiptData, onClose, onPrint }) {
         {receiptData.items.map((item, idx) => (
           <div key={idx} style={{ marginBottom: '8px' }}>
             <div style={{ fontSize: '1.1em', fontWeight: 'bold' }}>{item.sku} / {item.price.toLocaleString()}.-</div>
-            <div style={{ display: 'flex', fontSize: '1em' }}>
+            <div style={{ display: 'flex', fontSize: '1em', alignItems: 'flex-start' }}>
               <div style={{ flex: 1, paddingLeft: '5px', fontSize: '0.9em', color: '#333' }}>{item.name}</div>
-              <div style={{ width: '50px', flexShrink: 0, textAlign: 'right' }}>{(item.qty || 0).toFixed(2)}x</div>
-              <div style={{ width: '70px', flexShrink: 0, textAlign: 'right' }}>{(item.price || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}</div>
-              <div style={{ width: '80px', flexShrink: 0, textAlign: 'right' }}>{(item.subtotal || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}</div>
+              <div style={{ width: '40px', flexShrink: 0, textAlign: 'right' }}>{(item.qty || 0).toFixed(2)}x</div>
+              <div style={{ width: '60px', flexShrink: 0, textAlign: 'right' }}>{(item.price || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}</div>
+              <div style={{ width: '65px', flexShrink: 0, textAlign: 'right' }}>{(item.subtotal || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}</div>
             </div>
           </div>
         ))}

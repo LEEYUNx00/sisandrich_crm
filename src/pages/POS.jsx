@@ -552,11 +552,13 @@ export default function POS() {
         const imageData = canvas.toDataURL('image/png');
 
         // ส่งรูปภาพไปที่โปรแกรมสะพาน SIS_RICH_Bridge.exe (ใช้ IP 127.0.0.1)
-        const response = await fetch('http://127.0.0.1:8000/print-receipt', {
+        const response = await fetch('http://localhost:8000/print-receipt', {
           method: 'POST',
+          mode: 'cors',
+          credentials: 'omit',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            printerName: 'XP-80',
+            printerName: 'POSPrinter POS80',
             image: imageData,
             billId: receiptData.billId
           })

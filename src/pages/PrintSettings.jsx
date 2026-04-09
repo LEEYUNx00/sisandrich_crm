@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
-import { db } from '../firebase';
+import { db, storage } from '../firebase';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { Save, Printer, Smartphone, FileText, Layout, Info } from 'lucide-react';
+import html2canvas from 'html2canvas';
 
 export default function PrintSettings() {
   const [loading, setLoading] = useState(true);
@@ -56,8 +58,94 @@ export default function PrintSettings() {
     setSaving(false);
   };
 
-  const handleQuickPrint = () => {
-    window.print();
+  const handleQuickPrint = async () => {
+    // พิมพ์บาร์โค้ดผ่าน Bridge
+    try {
+      const element = document.getElementById('test-barcode-print-area');
+      if (!element) return window.print();
+
+      const canvas = await html2canvas(element, { scale: 2.5, useCORS: true, backgroundColor: '#ffffff' });
+      const imageData = canvas.toDataURL('image/png');
+
+      await fetch('http://localhost:8000/print-receipt', {
+        method: 'POST',
+        mode: 'cors',
+        credentials: 'omit',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          printerName: 'TSC TTP-247',
+          image: imageData,
+          billId: 'BARCODE-TEST'
+        })
+      });
+    } catch (err) {
+      console.warn("Bridge print failed, fallback...", err);
+      window.print();
+    }
+  };
+
+  const handleReceiptTestPrint = async () => {
+    // พิมพ์บิลเปล่าผ่าน Bridge
+    try {
+      const element = document.getElementById('test-receipt-print-area');
+      if (!element) return window.print();
+
+      const canvas = await html2canvas(element, { scale: 2.5, useCORS: true, backgroundColor: '#ffffff' });
+      const imageData = canvas.toDataURL('image/png');
+
+      await fetch('http://localhost:8000/print-receipt', {
+        method: 'POST',
+        mode: 'cors',
+        credentials: 'omit',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          printerName: 'POSPrinter POS80',
+          image: imageData,
+          billId: 'RECEIPT-TEST'
+        })
+      });
+    } catch (err) {
+      console.warn("Bridge print failed, fallback...", err);
+      window.print();
+    }
+  };
+
+  const handleImageUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    
+    const storageRef = ref(storage, 'receipt/logo.png');
+    
+    setSaving(true);
+    try {
+      await uploadBytes(storageRef, file);
+      const downloadURL = await getDownloadURL(storageRef);
+      setSettings(prev => ({ ...prev, qrCodeUrl: downloadURL }));
+      alert('อัปโหลดโลโก้เรียบร้อยแล้ว กรุณากด "บันทึกการตั้งค่า" เพื่อยืนยัน');
+    } catch (error) {
+      alert('เกิดข้อผิดพลาดในการอัปโหลด: ' + error.message);
+    }
+    setSaving(false);
+  };
+
+  const handleRemoveImage = async () => {
+    if (!settings.qrCodeUrl) return;
+    
+    setSaving(true);
+    try {
+      try {
+        const storageRef = ref(storage, 'receipt/logo.png');
+        await deleteObject(storageRef);
+      } catch (err) {
+        console.warn("Storage warning:", err);
+      }
+      
+      setSettings(prev => ({ ...prev, qrCodeUrl: '' }));
+      alert('ลบโลโก้เรียบร้อยแล้ว กรุณากด "บันทึกการตั้งค่า" เพื่อยืนยัน');
+    } catch (error) {
+       alert('เกิดข้อผิดพลาดในการลบ: ' + error.message);
+    }
+    setSaving(false);
   };
 
   if (loading) return <div style={{ padding: '40px', textAlign: 'center' }}>กำลังโหลดการตั้งค่า...</div>;
@@ -113,7 +201,7 @@ export default function PrintSettings() {
         {/* Tab Selection */}
         <div style={{ display: 'flex', gap: '2px', background: '#F7FAFC', padding: '0 10px', borderRadius: '12px 12px 0 0', borderBottom: '1px solid #E2E8F0', marginBottom: '24px' }}>
            <button className={`tab-btn ${activeTab === 'receipt' ? 'active' : ''}`} onClick={() => setActiveTab('receipt')}>
-             <FileText size={18} style={{ marginBottom: '-4px', marginRight: '6px' }} /> บิลเงินสด (XP-80)
+             <FileText size={18} style={{ marginBottom: '-4px', marginRight: '6px' }} /> บิลเงินสด (POS80)
            </button>
            <button className={`tab-btn ${activeTab === 'barcode' ? 'active' : ''}`} onClick={() => setActiveTab('barcode')}>
              <Layout size={18} style={{ marginBottom: '-4px', marginRight: '6px' }} /> สติกเกอร์ (TSC TTP)
@@ -129,7 +217,7 @@ export default function PrintSettings() {
                    <div style={{ background: '#FFF5F5', padding: '10px', borderRadius: '12px', color: '#D91A1A' }}><FileText size={24} /></div>
                    <div>
                      <h3 style={{ fontWeight: 'bold' }}>ตั้งค่าบิลเงินสด</h3>
-                     <p style={{ fontSize: '13px', color: '#718096' }}>เครื่องพิมพ์ Nita XP-80 (80mm)</p>
+                     <p style={{ fontSize: '13px', color: '#718096' }}>เครื่องพิมพ์ POSPrinter POS80 (80mm)</p>
                    </div>
                 </div>
 
@@ -166,14 +254,31 @@ export default function PrintSettings() {
                 </div>
 
                 <div className="input-group" style={{ marginTop: '16px' }}>
-                  <label style={{ fontWeight: 'bold', color: '#2B6CB0' }}>ลิงก์รูป QR Code (Image URL)</label>
-                  <input 
-                    type="text" 
-                    className="input" 
-                    placeholder="เช่น ลิงก์รูปจาก Google Drive หรือ Cloud" 
-                    value={settings.qrCodeUrl || ''} 
-                    onChange={e => setSettings({...settings, qrCodeUrl: e.target.value})} 
-                  />
+                  <label style={{ fontWeight: 'bold', color: '#2B6CB0' }}>ตั้งค่ารูปโลโก้ร้าน / QR Code</label>
+                  
+                  {settings.qrCodeUrl ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '16px', border: '1px solid #E2E8F0', padding: '12px', borderRadius: '8px', background: '#F8FAFC' }}>
+                      <img src={settings.qrCodeUrl} alt="Logo" style={{ width: '40px', height: '40px', objectFit: 'contain' }} />
+                      <div style={{ flex: 1, fontSize: '13px', color: '#4A5568' }}>มีรูปอัปโหลดไว้แล้วในฐานข้อมูล</div>
+                      <button onClick={handleRemoveImage} className="btn" style={{ background: '#FFF5F5', color: '#C53030', border: '1px solid #FEB2B2', padding: '6px 12px', fontSize: '12px' }}>
+                        ลบรูปภาพ
+                      </button>
+                    </div>
+                  ) : (
+                    <div style={{ border: '1.5px dashed #CBD5E0', background: '#F7FAFC', padding: '16px', borderRadius: '8px', textAlign: 'center' }}>
+                       <input 
+                         type="file" 
+                         accept="image/*" 
+                         onChange={handleImageUpload} 
+                         id="logo-upload"
+                         style={{ display: 'none' }}
+                       />
+                       <label htmlFor="logo-upload" className="btn btn-outline" style={{ cursor: 'pointer', display: 'inline-block', margin: 0 }}>
+                          คลิกเพื่อแนบไฟล์รูปภาพ
+                       </label>
+                       <p style={{ fontSize: '11px', color: '#718096', marginTop: '8px' }}>ไฟล์จะถูกเก็บไว้บนฐานข้อมูล (Firebase Storage)<br/>ทำให้สามารถปริ้นออกหน้าใบเสร็จได้แบบไม่โดนบล็อค</p>
+                    </div>
+                  )}
                 </div>
                 <div className="input-group" style={{ marginBottom: '16px' }}>
                   <label style={{ fontWeight: 'bold', color: '#2B6CB0' }}>รายการคำอวยพร (สุ่มทีละ 1 ประโยค)</label>
@@ -187,7 +292,7 @@ export default function PrintSettings() {
                   />
                 </div>
 
-                <button onClick={() => window.print()} className="btn btn-outline" style={{ width: '100%', border: '1.5px solid #D91A1A', color: '#D91A1A', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                <button onClick={handleReceiptTestPrint} className="btn btn-outline" style={{ width: '100%', border: '1.5px solid #D91A1A', color: '#D91A1A', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
                   <Printer size={18} /> ทดสอบพิมพ์บิลเปล่า
                 </button>
               </div>
@@ -269,32 +374,94 @@ export default function PrintSettings() {
                 }}
               >
                 <div style={{ textAlign: 'center', marginBottom: '15px' }}>
-                  <div style={{ fontWeight: 'bold', fontSize: '1.4em' }}>{settings.shopName}</div>
-                  <div style={{ fontSize: '1.1em', marginBottom: '5px' }}>RECEIPT</div>
-                  <div style={{ fontSize: '0.9em', lineHeight: '1.4' }} className="newline-text">{settings.address}</div>
+                  <div style={{ fontWeight: 'bold', fontSize: '1.6em', marginBottom: '2px', textTransform: 'uppercase' }}>{settings.shopName}</div>
+                  <div style={{ fontSize: '1.3em', fontWeight: 'bold', marginBottom: '4px' }}>RECEIPT</div>
+                  <div style={{ fontSize: '1em', lineHeight: '1.4', padding: '0 5px' }}>
+                    {settings.address ? settings.address.split('\\n').map((line, i) => <div key={i}>{line}</div>) : ''}
+                  </div>
                 </div>
-                <div style={{ borderBottom: '1px dashed #ccc', margin: '10px 0' }}></div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '1em' }}>
-                  <span>Sample Item x 1</span>
-                  <span>100.00</span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', marginTop: '10px', fontSize: '1.2em' }}>
-                  <span>Total</span>
-                  <span>100.00</span>
-                </div>
-                <div style={{ borderBottom: '1px dashed #ccc', margin: '10px 0 15px 0' }}></div>
                 
-                {/* QR and Blessing Placeholders in Preview */}
-                <div style={{ marginBottom: '15px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                   {settings.qrCodeUrl && (
-                     <img src={settings.qrCodeUrl} alt="QR" style={{ width: '30mm', height: '30mm', marginBottom: '8px' }} />
-                   )}
-                   <div style={{ fontSize: '1em', fontWeight: 'bold', fontStyle: 'italic', textAlign: 'center' }}> ✨ คำอวยพรสุ่ม ✨ </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: '10px', fontSize: '1em', lineHeight: '1.6' }}>
+                  <div style={{ display: 'flex' }}><span style={{ width: '90px' }}>Date:</span> 8/4/2569 19:23</div>
+                  <div style={{ display: 'flex' }}><span style={{ width: '90px' }}>Receipt No.:</span> RC2604...</div>
+                  <div style={{ display: 'flex' }}><span style={{ width: '90px' }}>Cashier:</span> Admin Staff</div>
+                  <div style={{ display: 'flex' }}><span style={{ width: '90px' }}>Ref:</span> General Staff</div>
+                  <div style={{ display: 'flex' }}><span style={{ width: '90px' }}>Member:</span> ลูกค้าทั่วไป</div>
                 </div>
 
-                <div style={{ textAlign: 'center', fontSize: '0.9em', color: '#4A5568' }} className="newline-text">
-                  {settings.receiptFooter}
+                <div style={{ textAlign: 'center', letterSpacing: '-1px', marginBottom: '5px' }}>==========================================</div>
+        
+                <div style={{ display: 'flex', fontWeight: 'bold', fontSize: '1em', marginBottom: '5px' }}>
+                  <div style={{ flex: 1 }}>Items/Services</div>
+                  <div style={{ width: '40px', flexShrink: 0, textAlign: 'right' }}>Qty.</div>
+                  <div style={{ width: '60px', flexShrink: 0, textAlign: 'right' }}>Price</div>
+                  <div style={{ width: '65px', flexShrink: 0, textAlign: 'right' }}>Total</div>
                 </div>
+
+                <div style={{ textAlign: 'center', letterSpacing: '-1px', marginBottom: '5px' }}>==========================================</div>
+
+                <div style={{ marginBottom: '8px' }}>
+                    <div style={{ fontSize: '1.1em', fontWeight: 'bold' }}>SR000873 / 125.-</div>
+                    <div style={{ display: 'flex', fontSize: '1em', alignItems: 'flex-start' }}>
+                    <div style={{ flex: 1, paddingLeft: '5px', fontSize: '0.9em', color: '#333' }}>ตัวอย่างสินค้า</div>
+                    <div style={{ width: '40px', flexShrink: 0, textAlign: 'right' }}>1.00x</div>
+                    <div style={{ width: '60px', flexShrink: 0, textAlign: 'right' }}>125.00</div>
+                    <div style={{ width: '65px', flexShrink: 0, textAlign: 'right' }}>125.00</div>
+                    </div>
+                </div>
+
+                <div style={{ textAlign: 'center', letterSpacing: '-1px', marginBottom: '5px' }}>------------------------------------------</div>
+
+                <div style={{ fontSize: '1.1em', paddingLeft: '40%' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                    <span>Sub-Total</span>
+                    <span>125.00</span>
+                  </div>
+                  
+                  <div style={{ borderTop: '1px dashed #000', margin: '5px 0' }}></div>
+                  
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '1.4em', marginBottom: '8px' }}>
+                    <span>Total</span>
+                    <span>125.00</span>
+                  </div>
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                    <span>Payment Cash</span>
+                    <span>125.00</span>
+                  </div>
+                  
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                    <span>Debt</span>
+                    <span>0.00</span>
+                  </div>
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold' }}>
+                    <span>Change</span>
+                    <span>0.00</span>
+                  </div>
+                </div>
+
+                <div style={{ textAlign: 'center', marginTop: '30px', fontSize: '11px' }}>
+                  <div style={{ fontWeight: 'bold', fontSize: '14px', marginBottom: '10px' }}>Thank You</div>
+                  
+                  <div style={{ marginBottom: '15px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                     {settings.qrCodeUrl && (
+                       <img src={settings.qrCodeUrl} alt="QR" style={{ width: '35mm', height: '35mm', marginBottom: '8px', border: '1px solid #eee', padding: '2px' }} />
+                     )}
+                     <div style={{ fontSize: '12px', fontWeight: 'bold', fontStyle: 'italic', color: '#1A202C', marginTop: '4px' }}>
+                       ✨ ขอให้เป็นวันที่สดใสนะคะ ✨
+                     </div>
+                  </div>
+
+                  <div style={{ textAlign: 'left', fontSize: '10px', lineHeight: '1.6', borderTop: '1px solid #eee', paddingTop: '10px' }} className="newline-text">
+                    {settings.receiptFooter}
+                  </div>
+                </div>
+
+                <div style={{ textAlign: 'center', fontSize: '11px', marginTop: '20px', letterSpacing: '2px' }}>
+                  ********
+                </div>
+                <div style={{ height: '60px' }}></div>
               </div>
             ) : (
               <div>
@@ -317,10 +484,10 @@ export default function PrintSettings() {
         </div>
       </div>
 
-      {/* Hidden Test Print Area */}
-      <div className="test-print-area" style={{ display: 'none' }}>
+      {/* Hidden Test Print Area - ขยับไปไกลๆ แทน opacity เพื่อให้ html2canvas ทำงานได้ดีที่สุด */}
+      <div className="test-print-area" style={{ position: 'fixed', left: '-5000px', top: 0, zIndex: -1 }}>
         {activeTab === 'receipt' ? (
-          <div className="print-receipt-80" style={{ width: '70mm', margin: '0', color: '#000', fontFamily: "'Courier New', Courier, monospace", padding: '10px 0' }}>
+          <div id="test-receipt-print-area" className="print-receipt-80" style={{ width: '72mm', margin: '0', color: '#000', fontFamily: "'Courier New', Courier, monospace", padding: '10px 0', background: 'white' }}>
             {/* Header */}
             <div style={{ textAlign: 'center', marginBottom: '15px' }}>
               <div style={{ fontWeight: 'bold', fontSize: '20px', marginBottom: '2px', textTransform: 'uppercase' }}>{settings.shopName}</div>
@@ -395,7 +562,7 @@ export default function PrintSettings() {
             <div style={{ height: '60px' }}></div>
           </div>
         ) : (
-          <div className="print-row-3">
+          <div id="test-barcode-print-area" className="print-row-3" style={{ display: 'flex', flexWrap: 'wrap', width: '102mm', background: 'white' }}>
              {[...Array(testQty)].map((_, i) => (
               <div key={i} style={{ width: '32mm', height: '25mm', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: '0 2px', boxSizing: 'border-box', overflow: 'hidden' }}>
                  {settings.showShopNameOnBarcode && <div style={{ fontSize: '7px', fontWeight: 'bold' }}>{settings.shopName}</div>}
