@@ -96,7 +96,7 @@ export default function PrintSettings() {
         credentials: 'omit',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          printerName: 'POSPrinter POS80',
+          printerName: 'XP-80C',
           image: imageData,
           billId: 'RECEIPT-TEST'
         })
@@ -198,7 +198,7 @@ export default function PrintSettings() {
         {/* Tab Selection */}
         <div style={{ display: 'flex', gap: '2px', background: '#F7FAFC', padding: '0 10px', borderRadius: '12px 12px 0 0', borderBottom: '1px solid #E2E8F0', marginBottom: '24px' }}>
            <button className={`tab-btn ${activeTab === 'receipt' ? 'active' : ''}`} onClick={() => setActiveTab('receipt')}>
-             <FileText size={18} style={{ marginBottom: '-4px', marginRight: '6px' }} /> บิลเงินสด (POS80)
+             <FileText size={18} style={{ marginBottom: '-4px', marginRight: '6px' }} /> บิลเงินสด (XP-80C)
            </button>
            <button className={`tab-btn ${activeTab === 'barcode' ? 'active' : ''}`} onClick={() => setActiveTab('barcode')}>
              <Layout size={18} style={{ marginBottom: '-4px', marginRight: '6px' }} /> สติกเกอร์ (TSC TTP)
@@ -214,7 +214,7 @@ export default function PrintSettings() {
                    <div style={{ background: '#FFF5F5', padding: '10px', borderRadius: '12px', color: '#D91A1A' }}><FileText size={24} /></div>
                    <div>
                      <h3 style={{ fontWeight: 'bold' }}>ตั้งค่าบิลเงินสด</h3>
-                     <p style={{ fontSize: '13px', color: '#718096' }}>เครื่องพิมพ์ POSPrinter POS80 (80mm)</p>
+                     <p style={{ fontSize: '13px', color: '#718096' }}>เครื่องพิมพ์ XP-80C (80mm)</p>
                    </div>
                 </div>
 

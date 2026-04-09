@@ -20,51 +20,63 @@ app.post('/print-receipt', (req, res) => {
     const { image, printerName, billId } = req.body;
     if (!image) return res.status(400).json({ error: 'No image data' });
 
-    console.log(`[RECEIPT] Printing & Cutting for Bill: ${billId || 'TXN'} to ${printerName || 'XP-80'}`);
-
     const base64Data = image.replace(/^data:image\/png;base64,/, "");
     const tempImage = path.join(__dirname, 'temp_bill.png');
-    
     fs.writeFileSync(tempImage, base64Data, 'base64');
 
-    const actualPrinter = printerName || 'XP-80';
-    
-    // คำสั่งพิมพ์ภาพ + คำสั่งสั่งใบมีดทำงาน (ESC/POS: GS V 0)
-    const psCommand = `
+    const requestedPrinter = printerName || 'XP-80C';
+
+    const psScript = `
         Add-Type -AssemblyName System.Drawing;
-        $image = [System.Drawing.Image]::FromFile('${tempImage}');
+        $requested = "${requestedPrinter}";
+        
+        # ค้นหาเครื่องพิมพ์ที่ชื่อตรงที่สุด หรือมีคำสำคัญ และต้องไม่ถูกลบ
+        $printer = Get-Printer | Where-Object { ($_.Name -eq $requested -or $_.Name -like "*POS80*" -or $_.Name -like "*XP-80*") -and ($_.PrinterStatus -ne "PendingDeletion") } | Select-Object -First 1;
+        
+        if ($null -eq $printer) {
+            throw "Printer not found: $requested"
+        }
+
+        $pName = $printer.Name;
+        Write-Host "FOUND_PRINTER: $pName";
+
+        $image = [System.Drawing.Image]::FromFile('${tempImage.replace(/\\/g, '\\\\')}');
         $pd = New-Object System.Drawing.Printing.PrintDocument;
-        $pd.PrinterSettings.PrinterName = '${actualPrinter}';
+        $pd.PrinterSettings.PrinterName = $pName;
         $pd.DefaultPageSettings.Margins = New-Object System.Drawing.Printing.Margins(0,0,0,0);
         $pd.add_PrintPage({
             $ev = $args[1];
-
-            if ($pd.PrinterSettings.PrinterName -like '*TSC*' -or $pd.PrinterSettings.PrinterName -like '*Label*') {
-                $ev.Graphics.DrawImage($image, 0, 0, $image.Width / 1.5, $image.Height / 1.5);
-            } else {
-                $targetWidth = $ev.PageBounds.Width;
-                $factor = $targetWidth / $image.Width;
-                $targetHeight = $image.Height * $factor;
-                $ev.Graphics.DrawImage($image, 0, 0, [int]$targetWidth, [int]$targetHeight);
-            }
+            $targetWidth = $ev.PageBounds.Width;
+            $factor = $targetWidth / $image.Width;
+            $targetHeight = $image.Height * $factor;
+            $ev.Graphics.DrawImage($image, 0, 0, [int]$targetWidth, [int]$targetHeight);
             $ev.HasMorePages = $false;
         });
         $pd.Print();
         $image.Dispose();
 
-
+        # สั่งตัดกระดาษ
         $lineFeed = [char]10 + [char]10 + [char]10 + [char]10 + [char]10;
         $cutCommand = [char]29 + [char]86 + [char]66 + [char]0;
-        $lineFeed + $cutCommand | Out-Printer -Name '${actualPrinter}';
-    `.replace(/\n/g, ' ').trim();
+        $lineFeed + $cutCommand | Out-Printer -Name $pName;
+    `;
 
-    exec(`powershell -Command "${psCommand}"`, (error) => {
+    const psFile = path.join(__dirname, 'print_receipt.ps1');
+    fs.writeFileSync(psFile, psScript, 'utf8');
+
+    exec(`powershell -ExecutionPolicy Bypass -File "${psFile}"`, (error, stdout) => {
         if (error) {
             console.error(`Error printing receipt: ${error.message}`);
             return res.status(500).json({ success: false, error: error.message });
         }
-        console.log(`✅ Printed & Cut successfully!`);
-        res.json({ success: true });
+        
+        let detected = "Unknown";
+        if (stdout && stdout.includes("FOUND_PRINTER:")) {
+            detected = stdout.split("FOUND_PRINTER:")[1].trim().split('\n')[0];
+        }
+        
+        console.log(`✅ [RECEIPT] Printed via [${detected}] successfully!`);
+        res.json({ success: true, printerUsed: detected });
     });
 });
 

@@ -541,15 +541,25 @@ export default function POS() {
           return alert("❌ ไม่พบเทมเพลตบิล กรุณาลองกด 'พิมพ์ใบเสร็จ' อีกครั้งครับ");
         }
 
-        // ถ่ายภาพระดับสตูดิโอ (High-Res Snapshot)
+        // ถ่ายภาพระดับสตูดิโอ (เพิ่มความทนทานต่อ CORS)
         const canvas = await html2canvas(receiptElement, {
-          scale: 2.5,
+          scale: 2.2,
           useCORS: true,
+          allowTaint: false, // ห้ามใช้รูปที่ติด Proxy เพื่อไม่ให้ Canvas เสีย (Tainted)
           backgroundColor: '#ffffff',
-          logging: false
+          logging: true,
+          // ถ้ามีรูปที่โหลดไม่ได้ ให้ตัวโปรแกรมรันต่อไปได้
+          removeContainer: true
         });
 
-        const imageData = canvas.toDataURL('image/png');
+        let imageData = null;
+        try {
+          imageData = canvas.toDataURL('image/png');
+        } catch (canvasErr) {
+          console.error("Canvas is tainted, sending empty image or fallback", canvasErr);
+          // ถ้าถ่ายรูปไม่ได้จริงๆ ให้ใช้ระบบพิมพ์ปกติของเบราว์เซอร์
+          return window.print();
+        }
 
         // ส่งรูปภาพไปที่โปรแกรมสะพาน SIS_RICH_Bridge.exe (ใช้ IP 127.0.0.1)
         const response = await fetch('http://localhost:8000/print-receipt', {
@@ -558,7 +568,7 @@ export default function POS() {
           credentials: 'omit',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            printerName: 'POSPrinter POS80',
+            printerName: 'XP-80C',
             image: imageData,
             billId: receiptData.billId
           })
