@@ -59,27 +59,24 @@ export default function PrintSettings() {
   };
 
   const handleQuickPrint = async () => {
-    // พิมพ์บาร์โค้ดผ่าน Bridge
+    // พิมพ์บาร์โค้ดผ่าน Bridge โดยส่งเป็นภาษา TSPL (สำหรับเครื่องบาร์โค้ดโดยเฉพาะ)
     try {
-      const element = document.getElementById('test-barcode-print-area');
-      if (!element) return window.print();
-
-      const canvas = await html2canvas(element, { scale: 2.5, useCORS: true, backgroundColor: '#ffffff' });
-      const imageData = canvas.toDataURL('image/png');
-
-      await fetch('http://localhost:8000/print-receipt', {
+      await fetch('http://localhost:8000/print-barcode', {
         method: 'POST',
         mode: 'cors',
         credentials: 'omit',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          printerName: 'TSC TTP-247',
-          image: imageData,
-          billId: 'BARCODE-TEST'
+          Printer: 'TSC TTP-247',
+          Barcode: testBarcode,
+          Name: `${testBarcode}/${testPrice}.-`,
+          Price: testPrice,
+          Qty: testQty
         })
       });
+      alert('ส่งคำสั่งพิมพ์ไปยัง TSC TTP-247 สำเร็จ');
     } catch (err) {
-      console.warn("Bridge print failed, fallback...", err);
+      console.warn("Bridge print-barcode failed, fallback...", err);
       window.print();
     }
   };

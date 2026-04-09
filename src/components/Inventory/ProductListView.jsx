@@ -198,8 +198,27 @@ export default function ProductListView({
     setPrintingProduct(p);
   };
 
-  const executePrint = () => {
-    window.print();
+  const executePrint = async () => {
+    try {
+      await fetch('http://localhost:8000/print-barcode', {
+        method: 'POST',
+        mode: 'cors',
+        credentials: 'omit',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          Printer: 'TSC TTP-247',
+          Barcode: printForm.sku,
+          Name: `${printForm.sku}/${printForm.price}.-`,
+          Price: printForm.price,
+          Qty: printForm.qty
+        })
+      });
+      alert('ส่งคำสั่งพิมพ์ไปยัง TSC TTP-247 สำเร็จ');
+      setPrintingProduct(null);
+    } catch (err) {
+      console.warn("Bridge print-barcode failed, fallback...", err);
+      window.print();
+    }
   };
 
   const handleApplyAllStockModeTrigger = (e) => {
