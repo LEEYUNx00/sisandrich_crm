@@ -46,9 +46,18 @@ app.post('/print-receipt', (req, res) => {
         $pd.DefaultPageSettings.Margins = New-Object System.Drawing.Printing.Margins(0,0,0,0);
         $pd.add_PrintPage({
             $ev = $args[1];
+            $g = $ev.Graphics;
+            
+            # บังคับการวาดภาพแบบ Pixel-Perfect ไม่ให้มีการเกลี่ยสี (Anti-aliasing) ซึ่งทำให้ตัวอักษรเบลอ
+            $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::NearestNeighbor;
+            $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::None;
+            $g.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::Half;
+            $g.CompositingQuality = [System.Drawing.Drawing2D.CompositingQuality]::HighSpeed;
+
             $targetWidth = $ev.PageBounds.Width;
             $factor = $targetWidth / $image.Width;
             $targetHeight = $image.Height * $factor;
+            
             $ev.Graphics.DrawImage($image, 0, 0, [int]$targetWidth, [int]$targetHeight);
             $ev.HasMorePages = $false;
         });

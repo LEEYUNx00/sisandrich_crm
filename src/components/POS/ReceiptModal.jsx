@@ -94,6 +94,8 @@ export default function ReceiptModal({ receiptData, onClose, onPrint }) {
           color: '#000', 
           fontFamily: "'Tahoma', 'Leelawadee UI', 'Sukhumvit Set', sans-serif", 
           fontWeight: '600',
+          WebkitFontSmoothing: 'none',
+          MozOsxFontSmoothing: 'grayscale',
           padding: '5px 4mm',
           lineHeight: '1.2',
           boxSizing: 'border-box'
