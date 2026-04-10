@@ -217,15 +217,27 @@ export default function EditProductModal({ editingProduct, setEditingProduct, ha
             </div>
           </div>
 
-          <div style={{ marginBottom: '16px' }}>
-            <label style={{ display: 'block', marginBottom: '8px', fontSize: '14px', fontWeight: '500' }}>เลขแทร็ก / ชั้นวาง (Shelf)</label>
-            <input 
-              type="text" 
-              className="input" 
-              placeholder="เช่น A1-B2 หรือ ชั้น 2 ล็อก 3" 
-              value={editingProduct.shelf || ''} 
-              onChange={(e) => setEditingProduct({...editingProduct, shelf: e.target.value})}
-            />
+          <div style={{ display: 'flex', gap: '16px', marginBottom: '16px' }}>
+            <div style={{ flex: 1 }}>
+              <label style={{ display: 'block', marginBottom: '8px', fontSize: '14px', fontWeight: '500' }}>ชั้นวาง (Floor 1)</label>
+              <input 
+                type="text" 
+                className="input" 
+                placeholder="เช่น A1-B2" 
+                value={editingProduct.shelf1st || editingProduct.shelf || ''} 
+                onChange={(e) => setEditingProduct({...editingProduct, shelf1st: e.target.value, shelf: ''})}
+              />
+            </div>
+            <div style={{ flex: 1 }}>
+              <label style={{ display: 'block', marginBottom: '8px', fontSize: '14px', fontWeight: '500' }}>ชั้นวาง (Floor 3)</label>
+              <input 
+                type="text" 
+                className="input" 
+                placeholder="เช่น WH-A1" 
+                value={editingProduct.shelf3rd || ''} 
+                onChange={(e) => setEditingProduct({...editingProduct, shelf3rd: e.target.value})}
+              />
+            </div>
           </div>
 
           <div style={{ marginBottom: '16px' }}>

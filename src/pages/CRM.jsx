@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { db } from '../firebase';
-import { collection, onSnapshot, addDoc, serverTimestamp, doc, updateDoc, deleteDoc, query, where, getDocs, orderBy, setDoc } from 'firebase/firestore';
-import { Search, Plus, Filter, Download, Users, User, Star, Award, Crown, Gift, Calendar, Share2, Wallet, X, CheckCircle, Copy, Edit, Trash2, History, ChevronRight, ShoppingBag, Trophy, Banknote } from 'lucide-react';
+import { collection, onSnapshot, addDoc, serverTimestamp, doc, updateDoc, deleteDoc, query, where, getDocs, orderBy, setDoc, writeBatch } from 'firebase/firestore';
+import { Search, Plus, Filter, Download, Users, User, Star, Award, Crown, Gift, Calendar, Share2, Wallet, X, CheckCircle, Copy, Edit, Trash2, History, ChevronRight, ShoppingBag, Trophy, Banknote, FileDown, FileUp } from 'lucide-react';
+import * as XLSX from 'xlsx';
 
 export default function CRM() {
   const [searchTerm, setSearchTerm] = useState('');
@@ -27,6 +28,16 @@ export default function CRM() {
   const [topupCustomer, setTopupCustomer] = useState(null);
   const [topupAmount, setTopupAmount] = useState('');
   const [topupNotes, setTopupNotes] = useState('');
+
+  // Import/Export State
+  const [importPreview, setImportPreview] = useState(null);
+  const [selectedImportItems, setSelectedImportItems] = useState([]);
+  const [importProgress, setImportProgress] = useState(null);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+
+  // Pagination State
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 20;
 
   // App Settings State (Coupons, Tiers, Wheel)
   const [membershipConfig, setMembershipConfig] = useState({ 
@@ -271,14 +282,268 @@ export default function CRM() {
   };
 
   // -------------------------
+  // 📥 IMPORT / EXPORT LOGIC
+  // -------------------------
+  
+  const handleExportMembers = () => {
+    if (customers.length === 0) return alert("ไม่มีข้อมูลสมาชิกเพื่อส่งออก");
+    
+    // Header Column (Standardized)
+    const headers = [
+      "Member ID", "Nickname", "Phone", "Gender", "Birth Date", 
+      "Total Spend", "Points", "Store Credit", "Total Visits", 
+      "Channel", "Notes", "Register Date", "Last Visit"
+    ];
+
+    const formatDate = (date) => {
+      if (!date) return '';
+      const d = date.toDate ? date.toDate() : new Date(date);
+      if (isNaN(d.getTime())) return '';
+      const day = String(d.getDate()).padStart(2, '0');
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const year = d.getFullYear();
+      const hours = String(d.getHours()).padStart(2, '0');
+      const minutes = String(d.getMinutes()).padStart(2, '0');
+      return `${day}/${month}/${year} ${hours}:${minutes}`;
+    };
+
+    const data = customers.map(c => [
+      c.memberId || '',
+      c.nickname || '',
+      c.phone || '',
+      c.gender || 'Male',
+      c.dob || '',
+      c.totalSpend || 0,
+      c.points || 0,
+      c.storeCredit || 0,
+      c.totalVisit || 0,
+      c.channel || 'Walk-in',
+      (c.notes || '').replace(/\n/g, ' '),
+      formatDate(c.createdAt),
+      formatDate(c.lastVisit)
+    ]);
+
+    const csvContent = "\uFEFF" + [headers, ...data].map(e => e.map(x => `"${x}"`).join(",")).join("\n");
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `sisandrich_members_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const getValue = (row, ...options) => {
+    const key = Object.keys(row).find(k => options.some(opt => String(k).toLowerCase().trim() === String(opt).toLowerCase().trim()));
+    return key ? row[key] : null;
+  };
+
+  const handleImportMembers = () => {
+    const fileInput = document.createElement('input');
+    fileInput.type = 'file';
+    fileInput.accept = '.xlsx, .xls, .csv';
+    fileInput.onchange = (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = async (evt) => {
+        try {
+          const data = new Uint8Array(evt.target.result);
+          const wb = XLSX.read(data, { type: 'array' });
+          const wsname = wb.SheetNames[0];
+          const ws = wb.Sheets[wsname];
+          const rows = XLSX.utils.sheet_to_json(ws);
+          
+          if (!rows.length) { 
+            alert("ไฟล์ว่างเปล่า"); 
+            return; 
+          }
+
+          let diffs = [];
+          for (const row of rows) {
+            const phone = String(getValue(row, 'Phone', 'เบอร์โทร', 'โทรศัพท์', '手机号') || '').trim();
+            if (!phone) continue;
+
+            const memberIdFromFile = String(getValue(row, 'Member ID', 'รหัสสมาชิก', 'รหัสประจำตัว') || '').trim();
+            const registerDateStr = getValue(row, 'Register Date', 'วันสมัครสมาชิก', 'วันที่สมัคร');
+            const lastVisitStr = getValue(row, 'Last Visit', 'วันเข้าใช้งานล่าสุด', 'เข้าใช้งานล่าสุด');
+            
+            const memberData = {
+              nickname: String(getValue(row, 'Nickname', 'ชื่อเล่น', 'Name', '昵称') || '').trim(),
+              phone: phone,
+              gender: getValue(row, 'Gender', 'เพศ', '性别') || 'Male',
+              dob: String(getValue(row, 'Birth Date', 'วันเกิด', '生日') || '').trim(),
+              totalSpend: Number(getValue(row, 'Total Spend', 'ยอดซื้อรวม', '消费总额')) || 0,
+              points: Number(getValue(row, 'Points', 'คะแนน', '积分')) || 0,
+              storeCredit: Number(getValue(row, 'Store Credit', 'เครดิต', '余額')) || 0,
+              totalVisit: Number(getValue(row, 'Total Visits', 'จำนวนครั้งที่มา', '到店次数')) || 0,
+              channel: getValue(row, 'Channel', 'ช่องทาง', '来源') || 'Walk-in',
+              notes: String(getValue(row, 'Notes', 'หมายเหตุ', '备注') || '').trim(),
+              updatedAt: serverTimestamp()
+            };
+
+            const parseDateString = (str) => {
+              if (!str) return null;
+              // Handle DD/MM/YYYY HH:mm format
+              const parts = String(str).split(' ');
+              const dateParts = parts[0].split('/');
+              if (dateParts.length === 3) {
+                 const day = parseInt(dateParts[0]);
+                 const month = parseInt(dateParts[1]) - 1;
+                 let year = parseInt(dateParts[2]);
+                 // Handle YY to YYYY if needed (assuming 20xx)
+                 if (year < 100) year += 2000;
+                 
+                 const d = new Date(year, month, day);
+                 if (parts[1]) {
+                    const timeParts = parts[1].split(':');
+                    if (timeParts.length >= 2) {
+                       d.setHours(parseInt(timeParts[0]));
+                       d.setMinutes(parseInt(timeParts[1]));
+                    }
+                 }
+                 return isNaN(d.getTime()) ? new Date(str) : d;
+              }
+              return new Date(str);
+            };
+
+            if (registerDateStr) {
+               const d = parseDateString(registerDateStr);
+               if (d && !isNaN(d.getTime())) memberData.createdAt = d;
+            }
+            if (lastVisitStr) {
+               const d = parseDateString(lastVisitStr);
+               if (d && !isNaN(d.getTime())) memberData.lastVisit = d;
+            }
+
+            // If file has Member ID, it's safer to find by ID if it exists
+            const existing = customers.find(c => 
+              (memberIdFromFile && c.memberId === memberIdFromFile) || 
+              (c.phone === phone)
+            );
+
+            if (existing) {
+              // Compare if anything changed
+              let changedFields = [];
+              if (existing.nickname !== memberData.nickname) changedFields.push(`ชื่อ: ${existing.nickname} -> ${memberData.nickname}`);
+              if (Number(existing.totalSpend) !== memberData.totalSpend) changedFields.push(`ยอดซื้อ: ${existing.totalSpend} -> ${memberData.totalSpend}`);
+              if (Number(existing.points) !== memberData.points) changedFields.push(`แต้ม: ${existing.points} -> ${memberData.points}`);
+
+              if (changedFields.length > 0) {
+                diffs.push({ type: 'update', id: existing.id, phone: phone, name: existing.nickname, changes: changedFields, newData: memberData });
+              }
+            } else {
+              memberData.createdAt = serverTimestamp();
+              diffs.push({ type: 'add', phone: phone, name: memberData.nickname, newData: memberData });
+            }
+          }
+
+          if (diffs.length === 0) {
+            alert("ข้อมูลในไฟล์ตรงกับระบบปัจจุบันแล้ว ไม่มีอะไรต้องอัปเดต");
+            return;
+          }
+
+          setImportPreview(diffs);
+          setSelectedImportItems(diffs.map((_, i) => i));
+        } catch (error) {
+          alert("เกิดข้อผิดพลาดในการโหลดไฟล์: " + error.message);
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    };
+    fileInput.click();
+  };
+
+  const handleConfirmImport = async () => {
+    if (!importPreview) return;
+    try {
+      const itemsToProcess = importPreview.filter((_, i) => selectedImportItems.includes(i));
+      setImportProgress({ current: 0, total: itemsToProcess.length });
+
+      let nextNum = customers.length > 0 
+        ? Math.max(...customers.map(c => {
+            const match = c.memberId?.match(/\d+/);
+            return match ? parseInt(match[0]) : 0;
+          })) + 1 
+        : 1;
+
+      const CHUNK_SIZE = 400;
+      for (let i = 0; i < itemsToProcess.length; i += CHUNK_SIZE) {
+        const chunk = itemsToProcess.slice(i, i + CHUNK_SIZE);
+        const batch = writeBatch(db);
+
+        chunk.forEach(item => {
+          if (item.type === 'update') {
+            batch.update(doc(db, 'customers', item.id), item.newData);
+          } else {
+            const memberId = `MSR${nextNum.toString().padStart(4, '0')}`;
+            const finalData = { ...item.newData, memberId, name: item.newData.nickname };
+            batch.set(doc(collection(db, 'customers')), finalData);
+            nextNum++;
+          }
+        });
+
+        await batch.commit();
+        setImportProgress({ current: Math.min(i + CHUNK_SIZE, itemsToProcess.length), total: itemsToProcess.length });
+      }
+
+      await addDoc(collection(db, 'system_logs'), {
+        type: 'crm',
+        action: 'นำเข้าข้อมูลสมาชิก (Bulk Import)',
+        detail: `นำเข้าสำเร็จ: ${itemsToProcess.length} รายการ`,
+        operator: 'Admin Staff',
+        timestamp: serverTimestamp()
+      });
+
+      setImportPreview(null);
+      setImportProgress(null);
+      alert(`นำเข้าสมาชิกสำเร็จ ${itemsToProcess.length} รายการ!`);
+    } catch (error) {
+       setImportProgress({ current: 0, total: 0 });
+       alert("เกิดข้อผิดพลาดในการนำเข้า: " + error.message);
+    }
+  };
+
+  const handleDownloadTemplate = () => {
+    const headers = [
+      "Member ID", "Nickname", "Phone", "Gender", "Birth Date", "Total Spend", "Points", "Store Credit", "Total Visits", "Channel", "Notes", "Register Date", "Last Visit"
+    ];
+    const example = [
+      "", "เจมส์", "0812345678", "Male", "1990-12-30", "5000", "50", "0", "2", "TikTok", "ชอบถามเรื่องแหวน", "15/01/2024 10:30", "10/04/2026 11:55"
+    ];
+    const csvContent = "\uFEFF" + [headers, example].map(e => e.map(x => `"${x}"`).join(",")).join("\n");
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", "member_import_template.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // -------------------------
   // 📊 CALCULATIONS & STATS
   // -------------------------
   const filteredCustomers = customers.filter(c => 
-    c.name?.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    c.phone?.includes(searchTerm) ||
-    c.nickname?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    c.memberId?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+    (c.nickname?.toLowerCase().includes(searchTerm.toLowerCase()) || 
+     c.phone?.includes(searchTerm) ||
+     c.memberId?.toLowerCase().includes(searchTerm.toLowerCase()))
+  ).sort((a, b) => {
+    if (sortOrder === 'desc') return (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0);
+    if (sortOrder === 'asc') return (a.createdAt?.seconds || 0) - (b.createdAt?.seconds || 0);
+    return (a.nickname || '').localeCompare(b.nickname || '');
+  });
+
+  const totalVisits = filteredCustomers.reduce((sum, c) => sum + (c.totalVisit || 0), 0);
+  const totalSpend = filteredCustomers.reduce((sum, c) => sum + (c.totalSpend || 0), 0);
+  const avgSpend = totalVisits > 0 ? (totalSpend / totalVisits) : 0;
+
+  // Pagination Logic
+  const totalPages = Math.ceil(filteredCustomers.length / itemsPerPage);
+  const paginatedCustomers = filteredCustomers.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
   // Calculate Tiers Logic (Based on Total Spend)
   const getTier = (spend = 0) => {
@@ -314,7 +579,16 @@ export default function CRM() {
             <h2 style={{ fontSize: '26px', fontWeight: '950', color: '#1A202C', marginBottom: '6px', letterSpacing: '-0.5px' }}>Customer Relationship (CRM)</h2>
             <p style={{ color: '#718096', fontSize: '14px' }}>ระบบบริหารจัดการลูกค้าสัมพันธ์และสิทธิประโยชน์สมาชิก</p>
           </div>
-          <div style={{ display: 'flex', gap: '12px' }}>
+          <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+            <button className="btn btn-outline" style={{ display: 'flex', alignItems: 'center', gap: '8px', border: '1px solid #E2E8F0', borderRadius: '12px', color: '#666' }} onClick={handleDownloadTemplate} title="โหลดแม่แบบ CSV สำหรับนำเข้า">
+               <FileDown size={14} /> Template
+            </button>
+            <button className="btn btn-outline" style={{ display: 'flex', alignItems: 'center', gap: '8px', border: '1px solid #E2E8F0', borderRadius: '12px' }} onClick={handleExportMembers}>
+               <Download size={16} /> ส่งออก (Export)
+            </button>
+            <button className="btn btn-outline" style={{ display: 'flex', alignItems: 'center', gap: '8px', border: '1px solid #E2E8F0', borderRadius: '12px' }} onClick={handleImportMembers}>
+               <FileUp size={16} /> นำเข้า (Import)
+            </button>
             <button className="btn btn-outline" style={{ display: 'flex', alignItems: 'center', gap: '8px', border: '1px solid #E2E8F0', borderRadius: '12px' }} onClick={() => setShowLinkModal(true)}>
                <Share2 size={16} /> ลิงก์สมัครสมาชิก
             </button>
@@ -326,171 +600,221 @@ export default function CRM() {
 
         {/* Tab Navigation */}
         <div style={{ display: 'flex', gap: '10px', marginBottom: '24px', borderBottom: '1px solid #EDF2F7', paddingBottom: '12px' }}>
-          <TabButton active={activeTab === 'list'} icon={<Users size={18}/>} label="รายชื่อสมาชิก" onClick={() => setActiveTab('list')} />
+          <TabButton active={activeTab === 'list'} icon={<Users size={18}/>} label="รายชื่อสมาชิก" onClick={() => { setActiveTab('list'); setCurrentPage(1); }} />
           <TabButton active={activeTab === 'ranking'} icon={<History size={18}/>} label="รายงานยอดใช้จ่าย" onClick={() => setActiveTab('ranking')} />
           <TabButton active={activeTab === 'redemptions'} icon={<Gift size={18}/>} label="ประวัติการแลกแต้ม" onClick={() => setActiveTab('redemptions')} />
           <TabButton active={activeTab === 'config'} icon={<Award size={18}/>} label="สิทธิประโยชน์" onClick={() => setActiveTab('config')} />
           <TabButton active={activeTab === 'wheel'} icon={<Trophy size={18}/>} label="วงล้อนำโชค" onClick={() => setActiveTab('wheel')} />
         </div>
 
-        {activeTab === 'list' && <>
-            <div className="animate-fade-in">
+        {activeTab === 'list' && (
+          <div className="animate-fade-in">
+            {/* --- SUMMARY OVERVIEW CARDS --- */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '24px', marginBottom: '32px' }}>
+               <div className="card" style={{ background: 'linear-gradient(135deg, #48BB78 0%, #38A169 100%)', padding: '24px', borderRadius: '20px', color: 'white', display: 'flex', justifyContent: 'space-between', alignItems: 'center', boxShadow: '0 10px 15px -3px rgba(72, 187, 120, 0.3)' }}>
+                  <div>
+                     <div style={{ fontSize: '36px', fontWeight: '900', lineHeight: '1' }}>{totalVisits.toLocaleString()}</div>
+                     <div style={{ fontSize: '13px', fontWeight: 'bold', opacity: 0.9, marginTop: '8px', letterSpacing: '1px' }}>TOTAL VISITS</div>
+                  </div>
+                  <Users size={48} style={{ opacity: 0.3 }} />
+               </div>
+               <div className="card" style={{ background: 'linear-gradient(135deg, #4299E1 0%, #3182CE 100%)', padding: '24px', borderRadius: '20px', color: 'white', display: 'flex', justifyContent: 'space-between', alignItems: 'center', boxShadow: '0 10px 15px -3px rgba(66, 153, 225, 0.3)' }}>
+                  <div>
+                     <div style={{ fontSize: '32px', fontWeight: '900', lineHeight: '1' }}>฿{totalSpend.toLocaleString()}</div>
+                     <div style={{ fontSize: '13px', fontWeight: 'bold', opacity: 0.9, marginTop: '8px', letterSpacing: '1px' }}>TOTAL SPEND</div>
+                  </div>
+                  <Banknote size={48} style={{ opacity: 0.3 }} />
+               </div>
+               <div className="card" style={{ background: 'linear-gradient(135deg, #F56565 0%, #E53E3E 100%)', padding: '24px', borderRadius: '20px', color: 'white', display: 'flex', justifyContent: 'space-between', alignItems: 'center', boxShadow: '0 10px 15px -3px rgba(245, 101, 101, 0.3)' }}>
+                  <div>
+                     <div style={{ fontSize: '32px', fontWeight: '900', lineHeight: '1' }}>฿{Math.round(avgSpend).toLocaleString()}</div>
+                     <div style={{ fontSize: '13px', fontWeight: 'bold', opacity: 0.9, marginTop: '8px', letterSpacing: '1px' }}>AVG. SPEND / VISIT</div>
+                  </div>
+                  <Trophy size={48} style={{ opacity: 0.3 }} />
+               </div>
+            </div>
 
-        {/* Dashboard Stats */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 4fr', gap: '16px', marginBottom: '20px' }}>
-          <div className="card" style={{ padding: '24px', textAlign: 'center', background: '#fff', borderRadius: '12px' }}>
-             <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: '#EBF8FF', color: '#3182CE', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
-               <Users size={24} />
-             </div>
-             <h3 style={{ fontSize: '32px', fontWeight: '900', color: '#2D3748', margin: 0 }}>{stats.total.toLocaleString()}</h3>
-             <p style={{ fontSize: '12px', color: '#718096', fontWeight: 'bold' }}>TOTAL MEMBERS</p>
-          </div>
+            {/* Filter Bar */}
+            <div className="card" style={{ padding: '0', background: 'white', borderRadius: '20px', marginBottom: '24px', overflow: 'hidden' }}>
+              <div style={{ padding: '16px 24px', background: '#2D3748', color: '#E2E8F0', fontSize: '12px', fontWeight: 'bold', display: 'flex', gap: '2px', overflowX: 'auto' }}>
+                 <button style={{ padding: '8px 16px', borderRadius: '6px', background: '#4A5568', color: 'white', border: 'none', whiteSpace: 'nowrap' }}>Customer Group</button>
+                 <button style={{ padding: '8px 16px', borderRadius: '6px', background: 'transparent', color: '#CBD5E0', border: 'none', whiteSpace: 'nowrap' }}>Gender</button>
+                 <button style={{ padding: '8px 16px', borderRadius: '6px', background: 'transparent', color: '#CBD5E0', border: 'none', whiteSpace: 'nowrap' }}>Age</button>
+                 <button style={{ padding: '8px 16px', borderRadius: '6px', background: 'transparent', color: '#CBD5E0', border: 'none', whiteSpace: 'nowrap' }}>Birthday</button>
+                 <button style={{ padding: '8px 16px', borderRadius: '6px', background: 'transparent', color: '#CBD5E0', border: 'none', whiteSpace: 'nowrap' }}>Rewards Reminder</button>
+                 <button style={{ padding: '8px 16px', borderRadius: '6px', background: 'transparent', color: '#CBD5E0', border: 'none', whiteSpace: 'nowrap' }}>Top 10 Spenders</button>
+              </div>
+              <div style={{ padding: '24px', display: 'flex', gap: '16px', alignItems: 'center' }}>
+                <div style={{ flex: 1, position: 'relative' }}>
+                  <Search style={{ position: 'absolute', left: '16px', top: '50%', transform: 'translateY(-50%)', color: '#A0AEC0' }} size={20} />
+                  <input 
+                    type="text" 
+                    placeholder="ค้นหารายชื่อสมาชิก, เบอร์โทร หรือ รหัสสมาชิก..." 
+                    className="input"
+                    style={{ paddingLeft: '48px', marginBottom: 0, borderRadius: '14px', height: '52px', border: '2px solid #EDF2F7' }}
+                    value={searchTerm}
+                    onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
+                  />
+                </div>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button className="btn btn-outline" style={{ borderRadius: '12px', height: '52px' }}><Filter size={18} /> ตัวกรอง</button>
+                  <select className="input" style={{ width: '150px', marginBottom: 0, height: '52px', border: '2px solid #EDF2F7', borderRadius: '14px' }} value={sortOrder} onChange={e => setSortOrder(e.target.value)}>
+                    <option value="desc">สมัครล่าสุด</option>
+                    <option value="asc">สมัครเก่าสุด</option>
+                    <option value="alphabet">ชื่อ A-Z</option>
+                  </select>
+                </div>
+              </div>
+            </div>
 
-          <div className="card" style={{ padding: '20px', background: '#fff', borderRadius: '12px' }}>
-             <h4 style={{ fontSize: '12px', color: '#718096', fontWeight: 'bold', marginBottom: '16px' }}>ACQUISITION CHANNELS (ช่องทางการรู้จักร้าน)</h4>
-             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }}>
-                {topChannels.slice(0, 6).map(([ch, count]) => (
-                  <div key={ch} style={{ border: '1px solid #EDF2F7', padding: '10px', borderRadius: '8px', display: 'flex', justifyContent: 'space-between' }}>
-                     <span style={{ fontSize: '13px', color: '#4A5568' }}>{ch}</span>
-                     <span style={{ fontSize: '14px', fontWeight: 'bold', color: '#2B6CB0' }}>{count}</span>
+            {/* Tier Stats Summary */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '16px', marginBottom: '24px' }}>
+                {[
+                  { t: 'Silver', icon: <User size={20}/>, c: '#718096', bg: '#f7fafc' },
+                  { t: 'VIP', icon: <Star size={20}/>, c: '#3182CE', bg: '#ebf8ff' },
+                  { t: 'VVIP', icon: <Award size={20}/>, c: '#D69E2E', bg: '#fffff0' },
+                  { t: 'SVIP', icon: <Crown size={20}/>, c: '#DD6B20', bg: '#fffaf0' },
+                  { t: 'SSVIP', icon: <Crown size={20}/>, c: '#805AD5', bg: '#faf5ff' },
+                ].map(tier => (
+                  <div key={tier.t} className="card" style={{ padding: '16px', borderRadius: '12px', background: 'white', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                     <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: tier.bg, color: tier.c, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        {tier.icon}
+                     </div>
+                     <div>
+                        <h4 style={{ fontSize: '14px', fontWeight: 'bold', margin: 0 }}>{tier.t}</h4>
+                        <div style={{ fontSize: '18px', fontWeight: '900' }}>{stats.tiers[tier.t].toLocaleString()}</div>
+                     </div>
                   </div>
                 ))}
-             </div>
-          </div>
-        </div>
-
-        {/* Tier Stats */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '16px', marginBottom: '24px' }}>
-            {[
-              { t: 'Silver', icon: <User size={20}/>, c: '#718096', bg: '#f7fafc' },
-              { t: 'VIP', icon: <Star size={20}/>, c: '#3182CE', bg: '#ebf8ff' },
-              { t: 'VVIP', icon: <Award size={20}/>, c: '#D69E2E', bg: '#fffff0' },
-              { t: 'SVIP', icon: <Crown size={20}/>, c: '#DD6B20', bg: '#fffaf0' },
-              { t: 'SSVIP', icon: <Crown size={20}/>, c: '#805AD5', bg: '#faf5ff' },
-            ].map(tier => (
-              <div key={tier.t} className="card" style={{ padding: '16px', borderRadius: '12px', background: 'white', display: 'flex', alignItems: 'center', gap: '12px' }}>
-                 <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: tier.bg, color: tier.c, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    {tier.icon}
-                 </div>
-                 <div>
-                    <h4 style={{ fontSize: '14px', fontWeight: 'bold', margin: 0 }}>{tier.t}</h4>
-                    <div style={{ fontSize: '18px', fontWeight: '900' }}>{stats.tiers[tier.t].toLocaleString()}</div>
-                 </div>
-              </div>
-            ))}
-        </div>
-
-        {/* Search & Member List */}
-        <div className="card" style={{ padding: '24px', background: 'white', borderRadius: '12px' }}>
-          
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-            <div className="input-icon-wrapper" style={{ width: '400px' }}>
-              <Search className="icon" size={18} />
-              <input 
-                type="text" 
-                className="input" 
-                placeholder="ค้นหาสมาชิก เบอร์โทร, ชื่อเล่น, รหัสประจำตัว..." 
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                style={{ marginBottom: 0 }}
-              />
             </div>
-          </div>
 
-          {loading ? (
-            <div style={{ textAlign: 'center', padding: '60px', color: '#A0AEC0' }}>Loading Data...</div>
-          ) : filteredCustomers.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '60px', color: '#A0AEC0' }}>ไม่พบข้อมูลลูกค้า</div>
-          ) : (
-            <div className="table-container" style={{ overflowX: 'auto' }}>
-              <table className="table" style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-                <thead>
-                  <tr style={{ background: '#F7FAFC', color: '#4A5568', fontSize: '12px' }}>
-                    <th style={{ padding: '12px 16px', borderBottom: '1px solid #E2E8F0' }}>สมาชิก (Member)</th>
-                    <th style={{ padding: '12px 16px', borderBottom: '1px solid #E2E8F0' }}>ระดับ / เพศ</th>
-                    <th style={{ padding: '12px 16px', borderBottom: '1px solid #E2E8F0', textAlign: 'right' }}>สรุปยอดซื้อ (Spend summary)</th>
-                    <th style={{ padding: '12px 16px', borderBottom: '1px solid #E2E8F0', textAlign: 'right' }}>แต้มสะสม</th>
-                    <th style={{ padding: '12px 16px', borderBottom: '1px solid #E2E8F0', textAlign: 'right' }}>เครดิตเงินสด</th>
-                    <th style={{ padding: '12px 16px', borderBottom: '1px solid #E2E8F0', textAlign: 'center' }}>จัดการ</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredCustomers.map(c => {
-                    const tier = getTier(c.totalSpend);
-                    const avg = c.totalSpend / (c.totalVisit || 1);
-                    return (
-                      <tr key={c.id} style={{ borderBottom: '1px solid #EDF2F7' }}>
-                         <td style={{ padding: '12px 16px' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                              <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: '#EDF2F7', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#A0AEC0', fontSize: '14px', fontWeight: 'bold' }}>
-                                 {c.nickname ? c.nickname.charAt(0).toUpperCase() : <User size={16}/>}
-                              </div>
-                              <div>
-                                 <div style={{ fontSize: '14px', fontWeight: '700' }}>{c.nickname || c.name}</div>
-                                 <div style={{ fontSize: '11px', color: '#3182CE', fontWeight: 'bold' }}>{c.memberId || 'SSR-----'}</div>
-                                 <div style={{ fontSize: '11px', color: '#A0AEC0' }}>{c.phone}</div>
-                              </div>
-                            </div>
-                         </td>
-                         <td style={{ padding: '12px 16px' }}>
-                            <div style={{ marginBottom: '4px' }}>
-                              <span style={{ fontSize: '10px', fontWeight: '700', padding: '3px 6px', borderRadius: '4px', background: tier.bg, color: tier.color }}>{tier.name}</span>
-                            </div>
-                            <div style={{ fontSize: '12px', color: '#4A5568' }}>เพศ {c.gender || 'Male'}</div>
-                         </td>
-                         <td style={{ padding: '12px 16px', textAlign: 'right' }}>
-                            <div style={{ fontSize: '11px', color: '#4A5568', marginBottom: '2px' }}>
-                              <strong>Total Spent :</strong> {c.totalSpend?.toLocaleString()} THB
-                            </div>
-                            <div style={{ fontSize: '11px', color: '#718096', marginBottom: '2px' }}>
-                              <strong>Avg. Spent :</strong> {avg.toLocaleString()} THB
-                            </div>
-                            <div style={{ fontSize: '11px', color: '#4A5568' }}>
-                              <strong>Total Visit :</strong> {c.totalVisit || 0}
-                            </div>
-                            <div style={{ fontSize: '10px', color: '#A0AEC0', marginTop: '4px' }}>
-                              <strong>Last Visit :</strong> {c.lastVisit ? (() => {
-                                const d = c.lastVisit.toDate ? c.lastVisit.toDate() : new Date(c.lastVisit);
-                                return `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')}/${(d.getFullYear() % 100).toString().padStart(2, '0')}`;
-                              })() : '-'}
-                            </div>
-                         </td>
-                         <td style={{ padding: '12px 16px', textAlign: 'right' }}>
-                            <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#D69E2E' }}>
-                              {c.points?.toLocaleString() || 0} <span style={{ fontSize: '10px' }}>PTS</span>
-                            </div>
-                         </td>
-                         <td style={{ padding: '12px 16px', textAlign: 'right' }}>
-                            <div style={{ fontSize: '14px', fontWeight: '900', color: '#38A169' }}>
-                              ฿{c.storeCredit?.toLocaleString() || 0}
-                            </div>
-                         </td>
-                         <td style={{ padding: '12px 16px', textAlign: 'center' }}>
-                            <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
-                               <button 
-                                 className="btn-icon" 
-                                 title="ประวัติการซื้อ"
-                                 onClick={() => handleHistoryClick(c)}
-                                 style={{ padding: '6px', background: '#F0FFF4', color: '#38A169', border: '1px solid #C6F6D5' }}
-                               >
-                                 <History size={14} />
-                               </button>
-                               <button className="btn-icon" onClick={() => { setTopupCustomer(c); setIsTopupModalOpen(true); }} style={{ padding: '6px', background: '#FAF5FF', color: '#805AD5', border: '1px solid #E9D8FD' }} title="เติมเงิน (Top Up)"><Banknote size={14} /></button>
-                               <button className="btn-icon" onClick={() => { setEditingCustomer(c); setIsEditModalOpen(true); }} style={{ padding: '6px', background: '#EBF8FF', color: '#3182CE', border: '1px solid #BEE3F8' }} title="แก้ไขข้อมูล"><Edit size={14} /></button>
-                               <button className="btn-icon" onClick={() => handleDeleteCustomer(c.id, c.nickname || c.name)} style={{ padding: '6px', background: '#FFF5F5', color: '#E53E3E', border: '1px solid #FED7D7' }}><Trash2 size={14} /></button>
-                            </div>
-                         </td>
+            {/* Members Table */}
+            {loading ? (
+              <div style={{ textAlign: 'center', padding: '60px', color: '#A0AEC0' }}>Loading Data...</div>
+            ) : filteredCustomers.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '60px', color: '#A0AEC0' }}>ไม่พบข้อมูลลูกค้า</div>
+            ) : (
+              <div className="card" style={{ padding: '0', background: 'white', borderRadius: '20px', overflow: 'hidden' }}>
+                <div className="table-container" style={{ overflowX: 'auto' }}>
+                  <table className="table" style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                    <thead>
+                      <tr style={{ background: '#F7FAFC', color: '#4A5568', fontSize: '12px' }}>
+                        <th style={{ padding: '12px 16px', borderBottom: '1px solid #E2E8F0' }}>สมาชิก (Member)</th>
+                        <th style={{ padding: '12px 16px', borderBottom: '1px solid #E2E8F0' }}>ระดับ / เพศ</th>
+                        <th style={{ padding: '12px 16px', borderBottom: '1px solid #E2E8F0', textAlign: 'right' }}>สรุปยอดซื้อ (Spend summary)</th>
+                        <th style={{ padding: '12px 16px', borderBottom: '1px solid #E2E8F0', textAlign: 'right' }}>แต้มสะสม</th>
+                        <th style={{ padding: '12px 16px', borderBottom: '1px solid #E2E8F0', textAlign: 'right' }}>เครดิตเงินสด</th>
+                        <th style={{ padding: '12px 16px', borderBottom: '1px solid #E2E8F0', textAlign: 'center' }}>จัดการ</th>
                       </tr>
-                    );
-                  })}
-                </tbody>
-               </table>
-            </div>
-          )}
-        </div>
-      </div>
-      </>
-    }
+                    </thead>
+                    <tbody>
+                      {paginatedCustomers.map(c => {
+                        const tier = getTier(c.totalSpend);
+                        const avg = c.totalSpend / (c.totalVisit || 1);
+                        return (
+                          <tr key={c.id} style={{ borderBottom: '1px solid #EDF2F7' }}>
+                             <td style={{ padding: '20px 16px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                  <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: '#EDF2F7', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#A0AEC0', fontSize: '16px', fontWeight: 'bold' }}>
+                                     {c.nickname ? c.nickname.charAt(0).toUpperCase() : <User size={16}/>}
+                                  </div>
+                                  <div>
+                                     <div style={{ fontSize: '15px', fontWeight: '700', color: '#1A202C' }}>{c.nickname || c.name}</div>
+                                     <div style={{ fontSize: '12px', color: '#3182CE', fontWeight: 'bold' }}>{c.memberId || 'SSR-----'}</div>
+                                     <div style={{ fontSize: '12px', color: '#A0AEC0' }}>{c.phone}</div>
+                                  </div>
+                                </div>
+                             </td>
+                             <td style={{ padding: '20px 16px' }}>
+                                <div style={{ marginBottom: '4px' }}>
+                                  <span style={{ fontSize: '11px', fontWeight: '700', padding: '4px 8px', borderRadius: '6px', background: tier.bg, color: tier.color }}>{tier.name}</span>
+                                </div>
+                                <div style={{ fontSize: '13px', color: '#4A5568' }}>เพศ {c.gender || 'Male'}</div>
+                             </td>
+                             <td style={{ padding: '20px 16px', textAlign: 'right' }}>
+                                <div style={{ fontSize: '12px', color: '#1A202C', fontWeight: '600' }}>
+                                  ฿{c.totalSpend?.toLocaleString()}
+                                </div>
+                                <div style={{ fontSize: '11px', color: '#718096' }}>
+                                  มาทั้งหมด {c.totalVisit || 0} ครั้ง
+                                </div>
+                                <div style={{ fontSize: '11px', color: '#A0AEC0' }}>
+                                  เฉลี่ย ฿{Math.round(avg).toLocaleString()} / ครั้ง
+                                </div>
+                             </td>
+                             <td style={{ padding: '20px 16px', textAlign: 'right' }}>
+                                <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#D69E2E' }}>
+                                  {c.points?.toLocaleString() || 0} <span style={{ fontSize: '10px' }}>PTS</span>
+                                </div>
+                             </td>
+                             <td style={{ padding: '20px 16px', textAlign: 'right' }}>
+                                <div style={{ fontSize: '16px', fontWeight: '900', color: '#38A169' }}>
+                                  ฿{c.storeCredit?.toLocaleString() || 0}
+                                </div>
+                             </td>
+                             <td style={{ padding: '20px 16px', textAlign: 'center' }}>
+                                <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
+                                   <button className="btn-icon" onClick={() => handleHistoryClick(c)} style={{ padding: '6px', background: '#F0FFF4', color: '#38A169', border: '1px solid #C6F6D5' }}><History size={16} /></button>
+                                   <button className="btn-icon" onClick={() => { setTopupCustomer(c); setTopupType('deposit'); setIsTopupModalOpen(true); }} style={{ padding: '6px', background: '#F5F3FF', color: '#805AD5', border: '1px solid #EDE9FE' }}><Wallet size={16} /></button>
+                                   <button className="btn-icon" onClick={() => { setEditingCustomer(c); setIsEditModalOpen(true); }} style={{ padding: '6px', background: '#EBF8FF', color: '#3182CE', border: '1px solid #BEE3F8' }}><Edit size={16} /></button>
+                                   <button className="btn-icon" onClick={() => handleDeleteCustomer(c.id, c.nickname || c.name)} style={{ padding: '6px', background: '#FFF5F5', color: '#E53E3E', border: '1px solid #FED7D7' }}><Trash2 size={16} /></button>
+                                </div>
+                             </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Pagination Controls */}
+                <div style={{ padding: '20px 32px', borderTop: '1px solid #EDF2F7', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#F8FAFC' }}>
+                  <div style={{ fontSize: '13px', color: '#718096' }}>
+                    แสดง {(currentPage - 1) * itemsPerPage + 1} - {Math.min(currentPage * itemsPerPage, filteredCustomers.length)} จาก {filteredCustomers.length} รายการ
+                  </div>
+                  <div style={{ display: 'flex', gap: '4px' }}>
+                    <button 
+                      className="btn btn-outline" 
+                      disabled={currentPage === 1} 
+                      onClick={() => { setCurrentPage(prev => prev - 1); window.scrollTo({ top: 300, behavior: 'smooth' }); }}
+                      style={{ padding: '6px 12px', minWidth: 'auto', borderRadius: '8px', height: '36px' }}
+                    >
+                      ย้อนกลับ
+                    </button>
+                    {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                       let pageNum = currentPage <= 3 ? i + 1 : (currentPage >= totalPages - 2 ? totalPages - 4 + i : currentPage - 2 + i);
+                       if (pageNum <= 0) pageNum = i + 1;
+                       if (pageNum > totalPages) return null;
+                       return (
+                        <button 
+                          key={pageNum} 
+                          onClick={() => { setCurrentPage(pageNum); window.scrollTo({ top: 300, behavior: 'smooth' }); }}
+                          style={{ 
+                            width: '36px', height: '36px', borderRadius: '8px', border: 'none', cursor: 'pointer',
+                            background: currentPage === pageNum ? '#2D3748' : 'white',
+                            color: currentPage === pageNum ? 'white' : '#718096',
+                            fontWeight: 'bold',
+                            border: currentPage === pageNum ? 'none' : '1px solid #E2E8F0'
+                          }}
+                        >
+                          {pageNum}
+                        </button>
+                       );
+                    })}
+                    <button 
+                      className="btn btn-outline" 
+                      disabled={currentPage === totalPages} 
+                      onClick={() => { setCurrentPage(prev => prev + 1); window.scrollTo({ top: 300, behavior: 'smooth' }); }}
+                      style={{ padding: '6px 12px', minWidth: 'auto', borderRadius: '8px', height: '36px' }}
+                    >
+                      ถัดไป
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {activeTab === 'ranking' && <RankingTab customers={customers} />}
         {activeTab === 'redemptions' && <RedemptionsTab />}
@@ -773,6 +1097,124 @@ export default function CRM() {
         </div>
       )}
 
+      {/* --- IMPORT PREVIEW MODAL --- */}
+      {importPreview && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(8px)' }}>
+          <div className="card animate-slide-in" style={{ width: '820px', maxWidth: '95vw', background: 'white', padding: 0, borderRadius: '24px', overflow: 'hidden', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)' }}>
+            <div style={{ padding: '24px 32px', background: 'linear-gradient(135deg, #2D3748 0%, #1A202C 100%)', color: 'white', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+                <div style={{ width: '48px', height: '48px', borderRadius: '14px', background: 'rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <FileUp size={24} color="#FFFFFF" />
+                </div>
+                <div>
+                  <h2 style={{ fontSize: '20px', fontWeight: '900', margin: 0 }}>ตรวจสอบข้อมูลสมาชิกที่เตรียมนำเข้า</h2>
+                  <p style={{ fontSize: '13px', opacity: 0.8, margin: 0 }}>พบรายการเปลี่ยนแปลงทั้งหมด {importPreview.length} รายการ</p>
+                </div>
+              </div>
+              <button onClick={() => setImportPreview(null)} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', borderRadius: '50%', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'white' }}>
+                <X size={20} />
+              </button>
+            </div>
+            
+            <div style={{ padding: '32px', maxHeight: '60vh', overflowY: 'auto', background: '#F8FAFC' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                {importPreview.map((item, idx) => (
+                  <div key={idx} style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    justifyContent: 'space-between', 
+                    padding: '16px 20px', 
+                    background: '#FFFFFF', 
+                    borderRadius: '16px',
+                    border: '1px solid',
+                    borderColor: item.type === 'add' ? '#C6F6D5' : '#FEFCBF',
+                    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05)'
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                      <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                         <input 
+                          type="checkbox" 
+                          style={{ width: '20px', height: '20px', cursor: 'pointer', accentColor: '#2D3748' }}
+                          checked={selectedImportItems.includes(idx)} 
+                          onChange={() => {
+                            if (selectedImportItems.includes(idx)) {
+                              setSelectedImportItems(selectedImportItems.filter(i => i !== idx));
+                            } else {
+                              setSelectedImportItems([...selectedImportItems, idx]);
+                            }
+                          }}
+                        />
+                      </div>
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                          <span style={{ 
+                            fontSize: '10px', fontWeight: 'bold', padding: '2px 8px', borderRadius: '20px',
+                            background: item.type === 'add' ? '#F0FFF4' : '#FFFBEB',
+                            color: item.type === 'add' ? '#2F855A' : '#B7791F',
+                            border: `1px solid ${item.type === 'add' ? '#C6F6D5' : '#FEFCBF'}`
+                          }}>
+                            {item.type === 'add' ? 'NEW MEMBER' : 'UPDATE DATA'}
+                          </span>
+                        </div>
+                        <div style={{ fontSize: '16px', fontWeight: '900', color: '#1A202C' }}>{item.name || 'ไม่ระบุชื่อ'}</div>
+                        <div style={{ fontSize: '13px', color: '#718096', fontWeight: '500' }}>{item.phone}</div>
+                      </div>
+                    </div>
+                    {item.changes && (
+                      <div style={{ textAlign: 'right', background: '#FEFCBF', padding: '8px 12px', borderRadius: '10px', border: '1px solid #FAF089' }}>
+                        {item.changes.map((c, i) => (
+                          <div key={i} style={{ fontSize: '11px', color: '#744210', fontWeight: 'bold' }}>• {c}</div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ padding: '24px 32px', background: 'white', borderTop: '1px solid #EDF2F7', display: 'flex', gap: '16px', justifyContent: 'center' }}>
+              <button 
+                className="btn btn-outline" 
+                style={{ width: '180px', height: '48px', borderRadius: '12px' }} 
+                onClick={() => setImportPreview(null)}
+              >
+                ยกเลิก
+              </button>
+              <button 
+                className="btn btn-primary" 
+                style={{ width: '280px', height: '48px', background: '#2D3748', borderRadius: '12px', fontWeight: 'bold' }}
+                onClick={handleConfirmImport}
+                disabled={selectedImportItems.length === 0}
+              >
+                ยืนยันการนำเข้า ({selectedImportItems.length} รายการ)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- IMPORT PROGRESS MODAL --- */}
+      {importProgress && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.85)', zIndex: 3000, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(10px)' }}>
+          <div className="card" style={{ width: '420px', background: 'white', padding: '40px', textAlign: 'center', borderRadius: '32px', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)' }}>
+            <div className="spinner" style={{ width: '60px', height: '60px', margin: '0 auto 28px', borderColor: '#2D3748', borderTopColor: 'transparent' }}></div>
+            <h3 style={{ fontSize: '22px', fontWeight: '900', color: '#1A202C', marginBottom: '10px' }}>กำลังบันทึกข้อมูลสมาชิก...</h3>
+            <p style={{ fontSize: '14px', color: '#718096', marginBottom: '32px', lineHeight: '1.6' }}>กรุณารอสักครู่ ระบบกำลังนำเข้าข้อมูลเข้าสู่ Cloud Database<br/>ห้ามปิดหรือรีเฟรชหน้านี้</p>
+            
+            <div style={{ background: '#F7FAFC', padding: '20px', borderRadius: '20px', border: '1px solid #EDF2F7' }}>
+              <div style={{ width: '100%', height: '10px', background: '#E2E8F0', borderRadius: '5px', overflow: 'hidden', marginBottom: '15px' }}>
+                <div style={{ width: `${(importProgress.current / importProgress.total) * 100}%`, height: '100%', background: 'linear-gradient(90deg, #2D3748, #4A5568)', transition: 'width 0.3s' }}></div>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '12px', fontWeight: '900', color: '#718096' }}>PROGRESS</span>
+                <span style={{ fontSize: '18px', fontWeight: '900', color: '#2D3748' }}>
+                  {importProgress.current} / {importProgress.total}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

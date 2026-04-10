@@ -4,15 +4,9 @@ import { collection, onSnapshot, query, orderBy, limit, doc, setDoc, getDocs, de
 import { Calendar, Search, Download, Filter, FileText, ShoppingCart, ShoppingBag, Clock, Settings as SettingsIcon, Shield, Store, Bell, Trash2, Database, AlertTriangle, Printer, Layout, Smartphone, Save, Smartphone as Mobile } from 'lucide-react';
 
 export default function Settings() {
-  const [activeTab, setActiveTab] = useState('general'); // 'general' | 'audit'
+  const [activeTab, setActiveTab] = useState('general'); // 'general' | 'maintenance'
   
-  // States for Audit Logs
-  const [logs, setLogs] = useState([]);
-  const [filteredLogs, setFilteredLogs] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [typeFilter, setTypeFilter] = useState('all');
-  const [dateFilter, setDateFilter] = useState('today');
+  const [loading, setLoading] = useState(false);
 
   // States for General Configs
   const [shopConfig, setShopConfig] = useState({
@@ -61,47 +55,6 @@ export default function Settings() {
     return () => { unsubSystem(); unsubReceipt(); };
   }, []);
 
-  // Fetch real-time Audit Logs
-  useEffect(() => {
-    try {
-      const q = query(collection(db, 'system_logs'), orderBy('timestamp', 'desc'), limit(50));
-      const unsubscribe = onSnapshot(q, (snapshot) => {
-        const fetchLogs = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data(),
-          timestamp: doc.data().timestamp?.toDate() || new Date()
-        }));
-        setLogs(fetchLogs.length > 0 ? fetchLogs : mockLogs);
-        setLoading(false);
-      }, () => {
-        setLogs(mockLogs);
-        setLoading(false);
-      });
-      return () => unsubscribe();
-    } catch (err) {
-      setLogs(mockLogs);
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    let result = [...logs];
-    if (typeFilter !== 'all') result = result.filter(log => log.type === typeFilter);
-    if (searchQuery) {
-      result = result.filter(log => 
-        log.detail.toLowerCase().includes(searchQuery.toLowerCase()) || 
-        log.action.toLowerCase().includes(searchQuery.toLowerCase()) || 
-        log.operator.toLowerCase().includes(searchQuery.toLowerCase())
-      );
-    }
-    const now = new Date();
-    if (dateFilter === 'today') {
-      result = result.filter(log => log.timestamp.toDateString() === now.toDateString());
-    } else if (dateFilter === 'week') {
-      result = result.filter(log => log.timestamp >= new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000));
-    }
-    setFilteredLogs(result);
-  }, [typeFilter, searchQuery, dateFilter, logs]);
 
   const handleSaveSettings = async (e) => {
     if (e) e.preventDefault();
@@ -117,17 +70,6 @@ export default function Settings() {
     }
   };
 
-  const handleDownloadReport = () => {
-    let csvStr = `No.,Date,Time,Type,Action,Details,Operator\n`;
-    filteredLogs.forEach((log, i) => {
-      csvStr += `${i+1},"${log.timestamp.toLocaleDateString('th-TH')}","${log.timestamp.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}","${log.type.toUpperCase()}","${log.action}","${log.detail}","${log.operator}"\n`;
-    });
-    const blob = new Blob(["\ufeff" + csvStr], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    link.download = `Audit_Logs_${typeFilter}.csv`;
-    link.click();
-  };
 
   const handleSystemReset = async () => {
     const confirmation = window.confirm("⚠️ คำเตือน: คุณแน่ใจหรือไม่ที่จะรีเซ็ตระบบ?\n\nการกระทำนี้จะลบทิ้งถาวร:\n1. ประวัติการขายทั้งหมด (Sales History)\n2. ประวัติการใช้งานระบบ (System Logs)\n3. ประวัติการปรับสต็อก (Inventory Logs)\n4. รีเซ็ตยอดซื้อและคะแนนของลูกค้าทุกคนเป็น 0\n\n** ไม่สามารถย้อนกลับได้ **");
@@ -170,19 +112,10 @@ export default function Settings() {
     }
   };
 
-  const getLogIcon = (type) => {
-    const defaultStyle = { bg: '#EDF2F7', color: '#4A5568', icon: <FileText size={18} /> };
-    const styles = {
-      sales: { bg: '#EBF8FF', color: '#3182CE', icon: <ShoppingCart size={18} /> },
-      inventory: { bg: '#E6FFFA', color: '#38A169', icon: <ShoppingBag size={18} /> }
-    };
-    return styles[type] || defaultStyle;
-  };
 
   const menuItems = [
     { id: 'general', label: 'ตั้งค่าร้านค้า (Store)', icon: <Store size={18} /> },
     { id: 'pos_config', label: 'จัดการรูปแบบบิล (Receipt)', icon: <Printer size={18} /> },
-    { id: 'audit', label: 'ประวัติระบบ (Audit Logs)', icon: <Clock size={18} /> },
     { id: 'maintenance', label: 'บำรุงรักษา (Maintenance)', icon: <Database size={18} /> },
     { id: 'notifications', label: 'การแจ้งเตือน (Notice)', icon: <Bell size={18} /> },
     { id: 'security', label: 'ความปลอดภัย (Security)', icon: <Shield size={18} /> }
@@ -395,61 +328,6 @@ export default function Settings() {
           </div>
         )}
 
-        {/* VIEW 2: AUDIT LOGS HISTORY */}
-        {activeTab === 'audit' && (
-          <div className="animate-slide-in">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-              <div>
-                <h3 style={{ fontSize: '20px', fontWeight: 'bold', color: '#1A202C' }}>📋 ประวัติการทำรายการ (Logs)</h3>
-                <p style={{ fontSize: '13px', color: '#718096' }}>ตรวจสอบความเคลื่อนไหวต่างๆ ของระบบ</p>
-              </div>
-              <button className="btn btn-primary" onClick={handleDownloadReport} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 12px', fontSize: '13px' }}>
-                <Download size={16} /> Export CSV
-              </button>
-            </div>
-
-            <div className="card" style={{ padding: '16px', backgroundColor: '#fff', marginBottom: '16px', display: 'flex', gap: '12px' }}>
-              <input type="text" className="input" placeholder="ค้นหารายละเอียด..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} style={{ flex: 1, marginBottom: 0 }} />
-              <select className="input" style={{ width: '160px', marginBottom: 0 }} value={typeFilter} onChange={e => setTypeFilter(e.target.value)}>
-                <option value="all">ทุกโมดูล</option>
-                <option value="sales">ยอดขาย</option>
-                <option value="inventory">คลังสินค้า</option>
-              </select>
-            </div>
-
-            <div className="card" style={{ padding: '0px', backgroundColor: '#fff', overflow: 'hidden' }}>
-              <div className="table-container">
-                <table className="table">
-                  <thead>
-                    <tr>
-                      <th>เวลา</th>
-                      <th>ประเภท</th>
-                      <th>หัวข้อ</th>
-                      <th>รายละเอียด</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredLogs.map(log => {
-                      const styleMeta = getLogIcon(log.type);
-                      return (
-                        <tr key={log.id}>
-                          <td>{log.timestamp.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}</td>
-                          <td>
-                            <span style={{ padding: '4px 8px', borderRadius: '6px', backgroundColor: styleMeta.bg, color: styleMeta.color, fontSize: '11px', fontWeight: '600' }}>
-                              {log.type.toUpperCase()}
-                            </span>
-                          </td>
-                          <td style={{ fontWeight: '600', fontSize: '13px' }}>{log.action}</td>
-                          <td style={{ fontSize: '13px' }}>{log.detail}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* MAINTENANCE & RESET */}
         {activeTab === 'maintenance' && (
@@ -477,8 +355,7 @@ export default function Settings() {
 
             <div style={{ padding: '20px', backgroundColor: '#F7FAFC', border: '1px solid #E2E8F0', borderRadius: '12px' }}>
               <h4 style={{ color: '#2D3748', marginBottom: '8px', fontSize: '15px', fontWeight: 'bold' }}>การสำรองข้อมูล (Data Backup)</h4>
-              <p style={{ fontSize: '13px', color: '#4A5568', marginBottom: '16px' }}>ตรวจสอบและส่งออกข้อมูลสำคัญในรูปแบบไฟล์ CSV เพื่อเก็บไว้ในเครื่อง</p>
-              <button className="btn btn-outline" onClick={handleDownloadReport}>Backup System Logs</button>
+              <p style={{ fontSize: '13px', color: '#4A5568', marginBottom: '16px' }}>ระบบฐานข้อมูลของคุณทำงานบน Cloud แบบ Real-time และมีการสำรองข้อมูลอัตโนมัติโดย Firebase</p>
             </div>
           </div>
         )}

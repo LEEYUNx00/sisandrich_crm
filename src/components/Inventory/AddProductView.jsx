@@ -18,7 +18,8 @@ export default function AddProductView({ products = [], setView }) {
     image: '',
     imgType: 'url', // 'url' | 'upload'
     barcode: '',
-    shelf: '',
+    shelf1st: '',
+    shelf3rd: '',
     remark: ''
   });
   
@@ -296,7 +297,8 @@ export default function AddProductView({ products = [], setView }) {
         stock1st: formData.initialLocation === '1st' ? qty : 0,
         stock3rd: formData.initialLocation === '3rd' ? qty : 0,
         image: imageUrl,
-        shelf: formData.shelf || '',
+        shelf1st: formData.shelf1st || '',
+        shelf3rd: formData.shelf3rd || '',
         remark: formData.remark || '',
         barcode: barcode,
         createdAt: serverTimestamp(),
@@ -578,15 +580,27 @@ export default function AddProductView({ products = [], setView }) {
               </div>
             </div>
 
-            <div style={{ marginBottom: '16px' }}>
-              <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', fontWeight: '600', color: '#4A5568' }}>เลขแทร็ก / ชั้นวาง (Shelf)</label>
-              <input 
-                type="text" 
-                className="input" 
-                placeholder="เช่น A1-B2 หรือ ชั้น 2 ล็อก 3" 
-                value={formData.shelf || ''} 
-                onChange={(e) => setFormData({ ...formData, shelf: e.target.value })} 
-              />
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
+              <div>
+                <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', fontWeight: '600', color: '#4A5568' }}>ชั้นวาง (Floor 1)</label>
+                <input 
+                  type="text" 
+                  className="input" 
+                  placeholder="เช่น A1" 
+                  value={formData.shelf1st || ''} 
+                  onChange={(e) => setFormData({ ...formData, shelf1st: e.target.value })} 
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', fontWeight: '600', color: '#4A5568' }}>ชั้นวาง (Floor 3)</label>
+                <input 
+                  type="text" 
+                  className="input" 
+                  placeholder="เช่น WH-A1" 
+                  value={formData.shelf3rd || ''} 
+                  onChange={(e) => setFormData({ ...formData, shelf3rd: e.target.value })} 
+                />
+              </div>
             </div>
 
             <div style={{ marginBottom: '16px' }}>

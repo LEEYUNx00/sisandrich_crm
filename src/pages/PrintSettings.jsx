@@ -18,8 +18,8 @@ export default function PrintSettings() {
     showShopNameOnBarcode: true,
     qrCodeUrl: '', // URL ของรูป QR Code
     blessings: 'ขอให้เป็นวันที่สดใสนะคะ\\nขอบคุณที่แวะมาอุดหนุนค่ะ\\nขอให้สนุกกับการแต่งตัวนะคะ\\nขอให้ร่ำรวยๆ ค่ะ',
-    receiptWidth: 72, // มิลลิเมตร
-    receiptFontSize: 12, // พิกเซล
+    receiptWidth: 68, // มิลลิเมตร (สเกลเล็กลงตามขอ)
+    receiptFontSize: 13, // พิกเซล (ปรับให้ชัดขึ้น)
     receiptLeftMargin: 0 // มิลลิเมตร
   });
   const [testBarcode, setTestBarcode] = useState('SR003026');
@@ -165,7 +165,7 @@ export default function PrintSettings() {
           }
           .tab-btn { padding: 12px 24px; font-weight: bold; cursor: pointer; border-bottom: 3px solid transparent; color: #718096; transition: all 0.2s; background: none; border: none; }
           .tab-btn.active { border-bottom: 3px solid #D91A1A; color: #D91A1A; background: #FFF5F5; }
-          .receipt-preview { width: 300px; background: white; box-shadow: 0 4px 20px rgba(0,0,0,0.06); padding: 20px; font-family: 'Courier New', monospace; font-size: 11px; border-top: 10px solid #D91A1A; margin: 0 auto; border: 1px solid #E2E8F0; }
+          .receipt-preview { width: 300px; background: white; box-shadow: 0 4px 20px rgba(0,0,0,0.06); padding: 20px; font-family: system-ui, sans-serif; font-size: 11px; border-top: 10px solid #D91A1A; margin: 0 auto; border: 1px solid #E2E8F0; }
           .barcode-preview-row { display: flex; gap: 8px; background: #EDF2F7; padding: 10px; border-radius: 8px; justify-content: center; }
           .barcode-preview-item { width: 95px; min-height: 75px; background: white; border: 1px solid #CBD5E0; border-radius: 4px; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 4px; font-family: Arial, sans-serif; text-align: center; font-size: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
           .p-barcode-font { 
@@ -363,7 +363,7 @@ export default function PrintSettings() {
                   marginLeft: `${settings.receiptLeftMargin || 0}mm`,
                   background: 'white', 
                   padding: '15px', 
-                  fontFamily: "'Courier New', Courier, monospace", 
+                  fontFamily: "system-ui, -apple-system, sans-serif", 
                   color: '#000',
                   borderTop: '10px solid #D91A1A', 
                   border: '1px solid #E2E8F0',
@@ -484,7 +484,7 @@ export default function PrintSettings() {
       {/* Hidden Test Print Area - ขยับไปไกลๆ แทน opacity เพื่อให้ html2canvas ทำงานได้ดีที่สุด */}
       <div className="test-print-area" style={{ position: 'fixed', left: '-5000px', top: 0, zIndex: -1 }}>
         {activeTab === 'receipt' ? (
-          <div id="test-receipt-print-area" className="print-receipt-80" style={{ width: '72mm', margin: '0', color: '#000', fontFamily: "'Courier New', Courier, monospace", padding: '10px 0', background: 'white' }}>
+          <div id="test-receipt-print-area" className="print-receipt-80" style={{ width: `${settings.receiptWidth}mm`, margin: '0', color: '#000', fontFamily: "system-ui, sans-serif", padding: '10px 0', background: 'white', lineHeight: '1.2' }}>
             {/* Header */}
             <div style={{ textAlign: 'center', marginBottom: '15px' }}>
               <div style={{ fontWeight: 'bold', fontSize: '20px', marginBottom: '2px', textTransform: 'uppercase' }}>{settings.shopName}</div>

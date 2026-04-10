@@ -92,7 +92,8 @@ export default function Inventory() {
         category: data.category,
         price: Number(data.price),
         cost: Number(data.cost) || 0,
-        shelf: data.shelf || '',
+        shelf1st: data.shelf1st || '',
+        shelf3rd: data.shelf3rd || '',
         stock1st: Number(data.stock1st),
         stock3rd: Number(data.stock3rd),
         stockMode: data.stockMode || 'Stock Control [Overselling]',
@@ -153,7 +154,7 @@ export default function Inventory() {
 
   const handleDownloadCSV = (locId) => {
     const stockColsNames = Object.values(locations).map(l => l.ref).join(',');
-    let csvStr = `No.,Image URL,SKU,Barcode,Product Name,Category,Sub-Category,Cost,Price,${stockColsNames},Total Stock,Stock Mode,Shelf/Rack,Remark\n`;
+    let csvStr = `No.,Image URL,SKU,Barcode,Product Name,Category,Sub-Category,Cost,Price,${stockColsNames},Total Stock,Stock Mode,Shelf Floor 1,Shelf Floor 3,Remark\n`;
     
     let index = 1;
     products.forEach(p => {
@@ -169,9 +170,10 @@ export default function Inventory() {
          const barcode = p.barcode || '';
          const subCategory = p.subCategory || '';
          const remark = p.remark || '';
-         const shelf = p.shelf || '';
+         const s1 = p.shelf1st || p.shelf || '';
+         const s3 = p.shelf3rd || '';
 
-         csvStr += `${index},"${imgUrl}","${p.sku}","${barcode}","${p.name}","${p.category}","${subCategory}",${p.cost || 0},${p.price || 0},${stockValues},${totalStock},"${p.stockMode || 'Stock Control [Overselling]'}","${shelf}","${remark}"\n`;
+         csvStr += `${index},"${imgUrl}","${p.sku}","${barcode}","${p.name}","${p.category}","${subCategory}",${p.cost || 0},${p.price || 0},${stockValues},${totalStock},"${p.stockMode || 'Stock Control [Overselling]'}","${s1}","${s3}","${remark}"\n`;
          index++;
        }
     });
@@ -279,10 +281,19 @@ export default function Inventory() {
                 price: Number(getValue(row, 'Price', 'ราคา', 'ราคาขาย', '价格')) || 0,
                 stockMode: getValue(row, 'Stock Mode', 'โหมดสต็อก', '库存模式') || 'Stock Control [Overselling]',
                 image: String(getValue(row, 'Image URL', 'รูปภาพ', 'รูปภาพสินค้า', '图片') || '').trim(),
-                shelf: String(getValue(row, 'Shelf', 'Shelf/Rack', 'เลขแทร็ก', 'ชั้นวาง', '货架', '货位') || '').trim(),
+                shelf1st: String(getValue(row, 'Shelf Floor 1', 'ชั้นวาง-ชั่น1', '1楼货架') || '').trim(),
+                shelf3rd: String(getValue(row, 'Shelf Floor 3', 'ชั้นวาง-ชั้น3', '3楼货架') || '').trim(),
                 remark: String(getValue(row, 'Remark', 'หมายเหตุ', '备注') || '').trim(),
                 updatedAt: serverTimestamp()
               };
+
+              const generalShelf = String(getValue(row, 'Shelf', 'Shelf/Rack', 'เลขแทร็ก', 'ชั้นวาง', '货架', '货位') || '').trim();
+              if (locId === '1st' && generalShelf) productData.shelf1st = generalShelf;
+              if (locId === '3rd' && generalShelf) productData.shelf3rd = generalShelf;
+              
+              if (!productData.shelf1st && existing?.shelf1st) productData.shelf1st = existing.shelf1st;
+              if (!productData.shelf3rd && existing?.shelf3rd) productData.shelf3rd = existing.shelf3rd;
+              if (!productData.shelf1st && !productData.shelf3rd && existing?.shelf) productData.shelf1st = existing.shelf; // Migration fallback
 
               if (has1stRef) {
                 productData.stock1st = Number(getValue(row, locations['1st'].ref)) || 0;
@@ -308,7 +319,8 @@ export default function Inventory() {
                   if (Number(existing.stock3rd) !== productData.stock3rd) changedFields.push(`สต็อกเก็บของ: ${existing.stock3rd || 0} -> ${productData.stock3rd}`);
                   if (existing.stockMode !== productData.stockMode) changedFields.push(`โหมดสต็อก: "${existing.stockMode}" -> "${productData.stockMode}"`);
                   if (existing.image !== productData.image) changedFields.push(`อัปเดตลิงก์รูปภาพใหม่`);
-                  if (existing.shelf !== productData.shelf) changedFields.push(`ชั้นวาง: "${existing.shelf}" -> "${productData.shelf}"`);
+                  if (existing.shelf1st !== productData.shelf1st) changedFields.push(`ชั้นวาง1: "${existing.shelf1st || '-'}" -> "${productData.shelf1st}"`);
+                  if (existing.shelf3rd !== productData.shelf3rd) changedFields.push(`ชั้นวาง3: "${existing.shelf3rd || '-'}" -> "${productData.shelf3rd}"`);
                   if (existing.remark !== productData.remark) changedFields.push(`หมายเหตุ: "${existing.remark}" -> "${productData.remark}"`);
 
                   if (changedFields.length > 0) {
@@ -339,7 +351,7 @@ export default function Inventory() {
   const handleDownloadTemplate = () => {
     // อ้างอิงจากรหัสคลังสินค้าที่สามารถแก้ไขได้แบบไดนามิก
     const stockCols = Object.values(locations).map(l => l.ref).join(',');
-    const csvStr = `No.,Image URL,SKU,Barcode,Product Name,Category,Sub-Category,Cost,Price,${stockCols},Total Stock,Stock Mode,Shelf/Rack,Remark\n`;
+    const csvStr = `No.,Image URL,SKU,Barcode,Product Name,Category,Sub-Category,Cost,Price,${stockCols},Total Stock,Stock Mode,Shelf Floor 1,Shelf Floor 3,Remark\n`;
     const blob = new Blob(["\ufeff" + csvStr], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement("a");
     const url = URL.createObjectURL(blob);

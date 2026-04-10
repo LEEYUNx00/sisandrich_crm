@@ -472,7 +472,30 @@ export default function ProductListView({
                       <td>
                         <div style={{ fontSize: '18px', fontWeight: 'bold', color: stock <= 0 ? '#E53E3E' : '#2B6CB0' }}>{stock}</div>
                       </td>
-                      <td>{p.shelf || '-'}</td>
+                      <td>
+                        <div style={{ fontSize: '13px', fontWeight: '500' }}>
+                          {selectedLocation === 'total' ? (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                               <span style={{ fontSize: '11px', color: '#718096' }}>F1: {p.shelf1st || p.shelf || '-'}</span>
+                               <span style={{ fontSize: '11px', color: '#718096' }}>F3: {p.shelf3rd || '-'}</span>
+                            </div>
+                          ) : (
+                            <>
+                              {selectedLocation === '1st' ? (p.shelf1st || p.shelf || '-') : (p.shelf3rd || '-')}
+                              {(selectedLocation === '1st' && p.shelf3rd) && (
+                                <div style={{ fontSize: '10px', color: '#38A169', marginTop: '2px' }}>
+                                  (Also in F3: {p.shelf3rd})
+                                </div>
+                              )}
+                              {(selectedLocation === '3rd' && (p.shelf1st || p.shelf)) && (
+                                <div style={{ fontSize: '10px', color: '#3182CE', marginTop: '2px' }}>
+                                  (Also in F1: {p.shelf1st || p.shelf})
+                                </div>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      </td>
                       <td>
                         <select className="input" style={{ padding: '4px', fontSize: '12px', width: '140px', marginBottom: 0 }} value={p.stockMode || ''} onChange={(e) => handleUpdateStockMode(p.id, e.target.value)}>
                            <option value="No Stock Control">No Stock</option>

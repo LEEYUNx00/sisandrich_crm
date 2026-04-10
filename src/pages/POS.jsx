@@ -266,16 +266,13 @@ export default function POS() {
   // Intercept the checkout button click
   const handleCheckoutClick = () => {
     if (cart.length === 0) return alert('ไม่มีสินค้าในตะกร้า!');
-    if (!selectedCustomer) {
-      setShowCustomerPrompt(true);
-    } else {
-      setTempCustomerId(selectedCustomer);
-      setNoteCounts({ 1: 0, 2: 0, 5: 0, 10: 0, 20: 0, 50: 0, 100: 0, 500: 0, 1000: 0 });
-      setCurrentAmount(0);
-      setPayments([]);
-      setInputBuffer('');
-      setShowPaymentModal(true);
-    }
+    // Directly go to payment - we will handle customer/seller selection there
+    setTempCustomerId(selectedCustomer);
+    setNoteCounts({ 1: 0, 2: 0, 5: 0, 10: 0, 20: 0, 50: 0, 100: 0, 500: 0, 1000: 0 });
+    setCurrentAmount(0);
+    setPayments([]);
+    setInputBuffer('');
+    setShowPaymentModal(true);
   };
 
   const addPaymentEntry = () => {
@@ -737,58 +734,7 @@ export default function POS() {
         {/* Right side: Cart & CheckoutPanel */}
         <div className="card" style={{ display: 'flex', flexDirection: 'column', padding: 0, overflow: 'hidden', backgroundColor: '#fff' }}>
           
-          {/* Transaction Info Header - Highly Compact */}
-          <div style={{ padding: '10px 16px', borderBottom: '1px solid #E2E8F0', background: '#F8FAFC', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            
-            {/* Salesperson Selector (Compact) */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <div style={{ color: '#3182CE', flexShrink: 0 }} title="Salesperson"><Briefcase size={14} /></div>
-              <select 
-                className="input" 
-                style={{ margin: 0, padding: '4px 8px', fontSize: '11px', height: '32px', background: '#fff', border: '1px solid #BEE3F8', flex: 1 }} 
-                value={selectedSeller?.id || ''} 
-                onChange={(e) => {
-                  const emp = employees.find(emp => emp.id === e.target.value);
-                  setSelectedSeller(emp || null);
-                }}
-              >
-                <option value="">-- พนักงานขาย (Select Seller) --</option>
-                {employees.map(emp => (
-                  <option key={emp.id} value={emp.id}>{emp.name}</option>
-                ))}
-              </select>
-            </div>
-
-            {/* Customer Selector (Compact) */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <div style={{ color: '#4A5568', flexShrink: 0 }} title="Customer"><User size={14} /></div>
-                <select 
-                  className="input" 
-                  style={{ margin: 0, padding: '4px 8px', fontSize: '11px', height: '32px', background: '#fff', border: '1px solid #E2E8F0', flex: 1 }} 
-                  value={selectedCustomer} 
-                  onChange={(e) => setSelectedCustomer(e.target.value)}
-                >
-                  <option value="">Walk-in Customer (ลูกค้าทั่วไป)</option>
-                  {customers.map(c => (
-                    <option key={c.id} value={c.id}>⭐ {c.name} ({c.phone}) | 💰 ฿{(c.storeCredit || 0).toLocaleString()} | 🎯 {c.points || 0} pts</option>
-                  ))}
-                </select>
-              </div>
-              {selectedCustomer && (() => {
-                 const c = customers.find(x => x.id === selectedCustomer);
-                 if(!c) return null;
-                 return (
-                    <div style={{ display: 'flex', gap: '8px', padding: '4px 8px', background: '#E6FFFA', border: '1px solid #B2F5EA', borderRadius: '4px', marginLeft: '22px' }}>
-                       <div style={{ flex: 1, fontSize: '11px', color: '#285E61', display: 'flex', justifyContent: 'space-between' }}>
-                          <span><strong>💰 เครดิตเงินสด:</strong> <span style={{fontSize: '12px', fontWeight: 'bold'}}>฿{(c.storeCredit || 0).toLocaleString()}</span></span>
-                          <span><strong>🎯 แต้มสะสม:</strong> <span style={{fontSize: '12px', fontWeight: 'bold'}}>{(c.points || 0).toLocaleString()}</span></span>
-                       </div>
-                    </div>
-                 );
-              })()}
-            </div>
-          </div>
+          {/* Cart Header */}
 
           {/* Cart Header */}
           <div style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 16px', background: '#EDF2F7', fontSize: '12px', fontWeight: 'bold', color: '#4A5568' }}>
@@ -936,6 +882,12 @@ export default function POS() {
         processCheckout={processCheckout}
         setShowMethodSelector={setShowMethodSelector}
         selectedPromotion={selectedPromotion}
+        employees={employees}
+        selectedSeller={selectedSeller}
+        setSelectedSeller={setSelectedSeller}
+        selectedCustomer={selectedCustomer}
+        setSelectedCustomer={setSelectedCustomer}
+        setTempCustomerId={setTempCustomerId}
       />
 
       {/* Method Selector Modal */}

@@ -88,12 +88,13 @@ export default function ReceiptModal({ receiptData, onClose, onPrint }) {
       {/* Actual Printable Template */}
       {/* Actual Printable Template (XP-80 Optimized) */}
         <div className="print-area" style={{ 
-          width: '70mm', 
+          width: '65mm', 
           marginLeft: `${printSettings.receiptLeftMargin || 0}mm`, 
           fontSize: `${printSettings.receiptFontSize || 13}px`,
           color: '#000', 
-          fontFamily: "'Courier New', Courier, monospace", 
-          padding: '10px 0' 
+          fontFamily: "system-ui, -apple-system, sans-serif", 
+          padding: '5px 0',
+          lineHeight: '1.2'
         }}>
         
         <div style={{ textAlign: 'center', marginBottom: '15px' }}>
@@ -112,7 +113,7 @@ export default function ReceiptModal({ receiptData, onClose, onPrint }) {
           <div style={{ display: 'flex' }}><span style={{ width: '90px' }}>Member:</span> {receiptData.customer?.name ? (receiptData.customer.nickname || receiptData.customer.name) : 'ลูกค้าทั่วไป (General)'}</div>
         </div>
 
-        <div style={{ textAlign: 'center', letterSpacing: '-1px', marginBottom: '5px' }}>==========================================</div>
+        <div style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '10px', margin: '8px 0' }}>-------------------------------------------------</div>
         
         <div style={{ display: 'flex', fontWeight: 'bold', fontSize: '1em', marginBottom: '5px' }}>
           <div style={{ flex: 1 }}>Items/Services</div>
@@ -121,7 +122,7 @@ export default function ReceiptModal({ receiptData, onClose, onPrint }) {
           <div style={{ width: '65px', flexShrink: 0, textAlign: 'right' }}>Total</div>
         </div>
 
-        <div style={{ textAlign: 'center', letterSpacing: '-1px', marginBottom: '5px' }}>==========================================</div>
+        <div style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '10px', margin: '4px 0' }}>-------------------------------------------------</div>
 
         {receiptData.items.map((item, idx) => (
           <div key={idx} style={{ marginBottom: '8px' }}>
@@ -135,7 +136,7 @@ export default function ReceiptModal({ receiptData, onClose, onPrint }) {
           </div>
         ))}
 
-        <div style={{ textAlign: 'center', letterSpacing: '-1px', marginBottom: '5px' }}>------------------------------------------</div>
+        <div style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '10px', margin: '8px 0' }}>-------------------------------------------------</div>
 
         <div style={{ fontSize: '1.1em', paddingLeft: '40%' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>

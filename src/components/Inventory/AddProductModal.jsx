@@ -13,7 +13,9 @@ export default function AddProductModal({ isOpen, onClose, products = [], locati
     stockMode: 'Stock Control [Overselling]',
     initialLocation: '1st', // '1st' | '3rd'
     stockQty: '0',
-    image: ''
+    image: '',
+    shelf1st: '',
+    shelf3rd: ''
   });
 
   const categoryPrefixes = {
@@ -80,6 +82,8 @@ export default function AddProductModal({ isOpen, onClose, products = [], locati
         stock1st: formData.initialLocation === '1st' ? qty : 0,
         stock3rd: formData.initialLocation === '3rd' ? qty : 0,
         image: formData.image || 'https://images.unsplash.com/photo-1611591437281-460bfbe1220a?w=500&auto=format&fit=crop&q=60',
+        shelf1st: formData.shelf1st || '',
+        shelf3rd: formData.shelf3rd || '',
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
       };
@@ -186,6 +190,29 @@ export default function AddProductModal({ isOpen, onClose, products = [], locati
                 value={formData.price} 
                 onChange={(e) => setFormData({ ...formData, price: e.target.value })} 
                 required 
+              />
+            </div>
+          </div>
+          
+          <div style={{ display: 'flex', gap: '12px', marginBottom: '16px' }}>
+            <div style={{ flex: 1 }}>
+              <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', fontWeight: '600', color: '#4A5568' }}>ชั้นวาง (Floor 1)</label>
+              <input 
+                type="text" 
+                className="input" 
+                placeholder="เช่น A1" 
+                value={formData.shelf1st} 
+                onChange={(e) => setFormData({ ...formData, shelf1st: e.target.value })} 
+              />
+            </div>
+            <div style={{ flex: 1 }}>
+              <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', fontWeight: '600', color: '#4A5568' }}>ชั้นวาง (Floor 3)</label>
+              <input 
+                type="text" 
+                className="input" 
+                placeholder="เช่น WH-A1" 
+                value={formData.shelf3rd} 
+                onChange={(e) => setFormData({ ...formData, shelf3rd: e.target.value })} 
               />
             </div>
           </div>

@@ -1,5 +1,5 @@
-import React from 'react';
-import { X, Plus, ShoppingCart, Send, CreditCard, Gift, Beer, Smartphone, MoreHorizontal, BadgePercent, Printer, Wallet, Banknote } from 'lucide-react';
+import React, { useState } from 'react';
+import { X, Plus, ShoppingCart, Send, CreditCard, Gift, Beer, Smartphone, MoreHorizontal, BadgePercent, Printer, Wallet, Banknote, Briefcase, User, Search } from 'lucide-react';
 
 export default function PaymentModal({
   isOpen,
@@ -24,8 +24,32 @@ export default function PaymentModal({
   isProcessing,
   processCheckout,
   setShowMethodSelector,
-  selectedPromotion
+  selectedPromotion,
+  employees,
+  selectedSeller,
+  setSelectedSeller,
+  selectedCustomer,
+  setSelectedCustomer,
+  setTempCustomerId
 }) {
+  const [customerSearch, setCustomerSearch] = useState('');
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+
+  const customerData = tempCustomerId ? customers.find(c => c.id === tempCustomerId) : null;
+
+  const filteredCustomers = customers.filter(c => 
+    c.name?.toLowerCase().includes(customerSearch.toLowerCase()) || 
+    c.phone?.includes(customerSearch) ||
+    c.nickname?.toLowerCase().includes(customerSearch.toLowerCase())
+  ).slice(0, 10); // Limit to 10 for performance
+
+  const handleSelectCustomer = (id) => {
+    setSelectedCustomer(id);
+    setTempCustomerId(id);
+    setIsSearchOpen(false);
+    setCustomerSearch(''); // Clear search after selection
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -76,6 +100,10 @@ export default function PaymentModal({
               transform: scale(0.95);
               background: #edf2f7;
             }
+            .selector-input:focus {
+              border-color: #3182ce !important;
+              box-shadow: 0 0 0 1px #3182ce !important;
+            }
           `}
         </style>
 
@@ -101,12 +129,124 @@ export default function PaymentModal({
               </button>
               <div>
                 <h2 style={{ fontSize: '18px', fontWeight: '800', color: '#1e293b', margin: 0 }}>ชำระเงิน (Payment)</h2>
-                <div style={{ fontSize: '13px', color: '#64748b' }}>สเกลพอดีหน้าจอ / สีสันทำเข้าใจง่าย</div>
+                <div style={{ fontSize: '13px', color: '#64748b' }}>กรอกข้อมูลพนักงานและลูกค้าเพื่อบันทึกการขายลงระบบ</div>
               </div>
            </div>
-           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#f8fafc', padding: '8px 16px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
-              <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#10b981' }}></div>
-              <div style={{ fontSize: '14px', color: '#64748b' }}>ลูกค้า: <span style={{ color: '#0f172a', fontWeight: '700' }}>{tempCustomerId ? (customers.find(c => c.id === tempCustomerId)?.nickname || customers.find(c => c.id === tempCustomerId)?.name || 'Guest') : 'Walk-in'}</span></div>
+           
+           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              {/* Salesperson Selector */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#f8fafc', padding: '4px 12px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+                <Briefcase size={16} color="#3182ce" />
+                <select 
+                  className="selector-input"
+                  style={{ 
+                    background: 'transparent', 
+                    border: 'none', 
+                    outline: 'none', 
+                    fontSize: '13px', 
+                    fontWeight: '700', 
+                    color: '#1e293b',
+                    padding: '4px 0',
+                    cursor: 'pointer'
+                  }}
+                  value={selectedSeller?.id || ''} 
+                  onChange={(e) => {
+                    const emp = employees.find(emp => emp.id === e.target.value);
+                    setSelectedSeller(emp || null);
+                  }}
+                >
+                  <option value="">-- เลือกพนักงานขาย --</option>
+                  {employees.map(emp => (
+                    <option key={emp.id} value={emp.id}>{emp.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Searchable Customer Selector */}
+              <div style={{ position: 'relative', minWidth: '220px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#f8fafc', padding: '4px 12px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+                  <Search size={16} color="#48bb78" />
+                  <input 
+                    type="text"
+                    placeholder={customerData ? `👤 ${customerData.name}` : "ค้นชื่อ / เบอร์สมาชิก..."}
+                    style={{ 
+                      background: 'transparent', 
+                      border: 'none', 
+                      outline: 'none', 
+                      fontSize: '13px', 
+                      fontWeight: '700', 
+                      color: customerData && !customerSearch ? '#48bb78' : '#1e293b',
+                      padding: '4px 0',
+                      width: '100%'
+                    }}
+                    value={customerSearch}
+                    onChange={(e) => {
+                      setCustomerSearch(e.target.value);
+                      setIsSearchOpen(true);
+                    }}
+                    onFocus={() => setIsSearchOpen(true)}
+                  />
+                  {(customerSearch || tempCustomerId) && (
+                    <button 
+                      onClick={() => {
+                        handleSelectCustomer('');
+                        setCustomerSearch('');
+                      }}
+                      style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', display: 'flex' }}
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
+
+                {/* Search Results Dropdown */}
+                {isSearchOpen && (
+                  <div style={{ 
+                    position: 'absolute', 
+                    top: '100%', 
+                    left: 0, 
+                    right: 0, 
+                    background: 'white', 
+                    marginTop: '8px', 
+                    borderRadius: '16px', 
+                    boxShadow: '0 10px 25px -5px rgba(0,0,0,0.1), 0 8px 10px -6px rgba(0,0,0,0.1)',
+                    border: '1px solid #e2e8f0',
+                    zIndex: 10000,
+                    overflow: 'hidden'
+                  }}>
+                    <div 
+                      onClick={() => handleSelectCustomer('')}
+                      style={{ padding: '10px 16px', fontSize: '13px', cursor: 'pointer', borderBottom: '1px solid #f1f5f9', color: '#64748b' }}
+                      onMouseOver={e => e.currentTarget.style.background = '#f8fafc'}
+                      onMouseOut={e => e.currentTarget.style.background = 'transparent'}
+                    >
+                      🚶 Walk-in Customer (ลูกค้าทั่วไป)
+                    </div>
+                    {filteredCustomers.map(c => (
+                      <div 
+                        key={c.id}
+                        onClick={() => handleSelectCustomer(c.id)}
+                        style={{ padding: '10px 16px', cursor: 'pointer', borderBottom: '1px solid #f1f5f9' }}
+                        onMouseOver={e => e.currentTarget.style.background = '#f0fdf4'}
+                        onMouseOut={e => e.currentTarget.style.background = 'transparent'}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                           <span style={{ fontSize: '14px', fontWeight: 'bold', color: '#1e293b' }}>{c.name}</span>
+                           <span style={{ fontSize: '11px', color: '#3182ce', fontWeight: 'bold' }}>{c.phone}</span>
+                        </div>
+                        <div style={{ fontSize: '10px', color: '#94a3b8', marginTop: '2px' }}>
+                           💰 ฿{(c.storeCredit || 0).toLocaleString()} | 🎯 {c.points || 0} pts
+                        </div>
+                      </div>
+                    ))}
+                    {filteredCustomers.length === 0 && customerSearch && (
+                      <div style={{ padding: '16px', textAlign: 'center', fontSize: '12px', color: '#94a3b8' }}>
+                         ไม่พบข้อมูลสมาชิก...
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
            </div>
         </div>
 
@@ -131,6 +271,21 @@ export default function PaymentModal({
                  </div>
 
                  <div style={{ borderTop: '1px solid #e2e8f0', marginTop: '20px', paddingTop: '20px' }}>
+                    {customerData && (
+                      <div style={{ marginBottom: '16px', padding: '12px', background: '#f8fafc', borderRadius: '12px', border: '1px dotted #cbd5e1' }}>
+                        <div style={{ fontSize: '11px', color: '#64748b', fontWeight: 'bold', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <User size={12} /> สิทธิประโยชน์สมาชิก
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '4px' }}>
+                          <span style={{ color: '#475569' }}>💸 เครดิตวอลเล็ท:</span>
+                          <span style={{ fontWeight: 'bold', color: '#10b981' }}>฿{(customerData.storeCredit || 0).toLocaleString()}</span>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
+                          <span style={{ color: '#475569' }}>🎯 แต้มสะสม:</span>
+                          <span style={{ fontWeight: 'bold', color: '#3182ce' }}>{(customerData.points || 0).toLocaleString()} pts</span>
+                        </div>
+                      </div>
+                    )}
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: '#64748b', marginBottom: '6px' }}>
                        <span>รวมเงิน</span>
                        <span>฿{getTotal().toLocaleString()}</span>
