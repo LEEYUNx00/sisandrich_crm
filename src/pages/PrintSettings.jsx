@@ -359,11 +359,12 @@ export default function PrintSettings() {
                 className="receipt-preview shadow-lg" 
                 style={{ 
                   width: `${settings.receiptWidth || 74}mm`, 
-                  fontSize: `${(settings.receiptFontSize || 11) * 0.9}px`,
+                  fontSize: `${settings.receiptFontSize || 11}px`,
                   marginLeft: `${settings.receiptLeftMargin || 0}mm`,
                   background: 'white', 
-                  padding: '15px 5mm', 
+                  padding: '15px 4mm', 
                   fontFamily: "'Tahoma', 'Leelawadee UI', sans-serif", 
+                  fontWeight: '600',
                   color: '#000',
                   borderTop: '10px solid #D91A1A', 
                   border: '1px solid #E2E8F0',
@@ -481,7 +482,7 @@ export default function PrintSettings() {
       {/* Hidden Test Print Area - ขยับไปไกลๆ แทน opacity เพื่อให้ html2canvas ทำงานได้ดีที่สุด */}
       <div className="test-print-area" style={{ position: 'fixed', left: '-5000px', top: 0, zIndex: -1 }}>
         {activeTab === 'receipt' ? (
-          <div id="test-receipt-print-area" className="print-receipt-80" style={{ width: `${settings.receiptWidth || 74}mm`, margin: '0', color: '#000', fontFamily: "'Tahoma', 'Leelawadee UI', sans-serif", padding: '10px 4mm', background: 'white', lineHeight: '1.2', boxSizing: 'border-box', fontSize: `${(settings.receiptFontSize || 11) * 0.9}px` }}>
+          <div id="test-receipt-print-area" className="print-receipt-80" style={{ width: `${settings.receiptWidth || 74}mm`, margin: '0', color: '#000', fontFamily: "'Tahoma', 'Leelawadee UI', sans-serif", fontWeight: '600', padding: '10px 4mm', background: 'white', lineHeight: '1.2', boxSizing: 'border-box', fontSize: `${settings.receiptFontSize || 11}px` }}>
             {/* Header */}
             <div style={{ textAlign: 'center', marginBottom: '15px' }}>
               <div style={{ fontWeight: 'bold', fontSize: '20px', marginBottom: '2px', textTransform: 'uppercase' }}>{settings.shopName}</div>

@@ -90,9 +90,10 @@ export default function ReceiptModal({ receiptData, onClose, onPrint }) {
         <div className="print-area" style={{ 
           width: `${printSettings.receiptWidth || 74}mm`, 
           marginLeft: `${printSettings.receiptLeftMargin || 0}mm`, 
-          fontSize: `${(printSettings.receiptFontSize || 12) * 0.9}px`,
+          fontSize: `${printSettings.receiptFontSize || 11}px`,
           color: '#000', 
           fontFamily: "'Tahoma', 'Leelawadee UI', 'Sukhumvit Set', sans-serif", 
+          fontWeight: '600',
           padding: '5px 4mm',
           lineHeight: '1.2',
           boxSizing: 'border-box'
@@ -144,7 +145,7 @@ export default function ReceiptModal({ receiptData, onClose, onPrint }) {
           
           <div style={{ borderTop: '1px dashed #000', margin: '5px 0' }}></div>
           
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '1.4em', marginBottom: '8px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: '900', fontSize: '1.4em', marginBottom: '8px' }}>
             <span>Total</span>
             <span>{(receiptData.grandTotal || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
           </div>

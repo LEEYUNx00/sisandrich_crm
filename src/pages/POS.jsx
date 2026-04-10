@@ -11,6 +11,7 @@ import MethodSelectorModal from '../components/POS/MethodSelectorModal';
 import ReceiptModal from '../components/POS/ReceiptModal';
 import CustomerPromptModal from '../components/POS/CustomerPromptModal';
 import AddMemberModal from '../components/POS/AddMemberModal';
+import QuickAddProductModal from '../components/POS/QuickAddProductModal';
 
 export default function POS() {
   const [cart, setCart] = useState([]);
@@ -27,6 +28,11 @@ export default function POS() {
   // Promotions
   const [promotions, setPromotions] = useState([]);
   const [selectedPromotion, setSelectedPromotion] = useState('');
+
+  // Quick Add Product
+  const [showQuickAdd, setShowQuickAdd] = useState(false);
+  const [quickAddBarcode, setQuickAddBarcode] = useState('');
+  const [quickAddForm, setQuickAddForm] = useState({ name: '', price: '', category: 'General', stock: 1 });
 
   // Customer Search in Modal
   const [modalCustomerSearch, setModalCustomerSearch] = useState('');
@@ -162,19 +168,59 @@ export default function POS() {
       // เล็งโฟกัสกลับไปที่ช่องเดิม
       setTimeout(() => searchInputRef.current?.focus(), 100);
     } else {
-      // 📝 บันทึกประวัติการยิงบาร์โค้ดไม่สำเร็จ (Audit Unknown Barcode)
+      // 📝 ยิงไม่พบ -> เปิด Modal เพิ่มสินค้าด่วน
       const unknownBarcode = searchTerm.trim();
-      addDoc(collection(db, 'system_logs'), {
+      setQuickAddBarcode(unknownBarcode);
+      setQuickAddForm({
+        name: `สินค้าใหม่ [${unknownBarcode}]`,
+        price: '',
+        category: 'General',
+        stock: 1
+      });
+      setShowQuickAdd(true);
+      setSearchTerm('');
+    }
+  };
+
+  const handleQuickAddSubmit = async (e) => {
+    e.preventDefault();
+    if (!quickAddForm.name || !quickAddForm.price) return;
+
+    try {
+      const newProductData = {
+        name: quickAddForm.name,
+        sku: `AUTO-${Date.now().toString().slice(-6)}`,
+        barcode: quickAddBarcode,
+        category: quickAddForm.category,
+        price: Number(quickAddForm.price),
+        cost: 0,
+        stock1st: Number(quickAddForm.stock),
+        stock3rd: 0,
+        stockMode: 'Stock Control [Restricted]',
+        createdAt: serverTimestamp()
+      };
+
+      const docRef = await addDoc(collection(db, 'products'), newProductData);
+      const productWithId = { id: docRef.id, ...newProductData };
+
+      // บันทึก Log
+      await addDoc(collection(db, 'system_logs'), {
         type: 'pos',
-        action: '⚠️ ยิงบาร์โค้ดไม่พบสินค้า',
-        detail: `บาร์โค้ด: ${unknownBarcode} (พยายามยิงที่หน้าขายแต่ไม่มีในระบบ)`,
+        action: '🆕 เพิ่มสินค้าด่วนหน้า POS',
+        detail: `สินค้า: ${newProductData.name} (Barcode: ${quickAddBarcode}) ราคา: ${newProductData.price}`,
         operator: 'Admin Staff',
         timestamp: serverTimestamp()
       });
 
-      alert(`❌ ไม่พบสินค้า: บาร์โค้ด [${unknownBarcode}] ไม่มีในระบบ\n(ระบบได้บันทึกประวัตินี้ไว้เพื่อให้ผู้จัดการตรวจสอบแล้วครับ)`);
-      setSearchTerm('');
+      // เพิ่มลงตะกร้าทันที
+      addToCart(productWithId);
+      
+      setShowQuickAdd(false);
+      // โฟกัสกลับไปที่ช่องค้นหา
       setTimeout(() => searchInputRef.current?.focus(), 100);
+    } catch (err) {
+      console.error("Quick add failed:", err);
+      alert("ไม่สามารถเพิ่มสินค้าได้: " + err.message);
     }
   };
 
@@ -552,7 +598,7 @@ export default function POS() {
 
         // ถ่ายภาพระดับสตูดิโอ (เพิ่มความทนทานต่อ CORS)
         const canvas = await html2canvas(receiptElement, {
-          scale: 2.2,
+          scale: 3.0,
           useCORS: true,
           allowTaint: false, // ห้ามใช้รูปที่ติด Proxy เพื่อไม่ให้ Canvas เสีย (Tainted)
           backgroundColor: '#ffffff',
@@ -918,6 +964,16 @@ export default function POS() {
         receiptData={receiptData}
         onClose={handleCloseReceipt}
         onPrint={printReceipt}
+      />
+
+      {/* Quick Add Product Modal */}
+      <QuickAddProductModal
+        isOpen={showQuickAdd}
+        onClose={() => setShowQuickAdd(false)}
+        barcode={quickAddBarcode}
+        form={quickAddForm}
+        setForm={setQuickAddForm}
+        onSubmit={handleQuickAddSubmit}
       />
     </>
   );
