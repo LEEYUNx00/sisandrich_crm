@@ -18,8 +18,8 @@ export default function PrintSettings() {
     showShopNameOnBarcode: true,
     qrCodeUrl: '', // URL ของรูป QR Code
     blessings: 'ขอให้เป็นวันที่สดใสนะคะ\\nขอบคุณที่แวะมาอุดหนุนค่ะ\\nขอให้สนุกกับการแต่งตัวนะคะ\\nขอให้ร่ำรวยๆ ค่ะ',
-    receiptWidth: 68, // มิลลิเมตร (สเกลเล็กลงตามขอ)
-    receiptFontSize: 13, // พิกเซล (ปรับให้ชัดขึ้น)
+    receiptWidth: 74, // มิลลิเมตร (กว้างขึ้นนิดนึงเพื่อให้สเกลภาพรวมหดลงเหลือ ~97%)
+    receiptFontSize: 11, // พิกเซล (ปรับให้เล็กลง)
     receiptLeftMargin: 0 // มิลลิเมตร
   });
   const [testBarcode, setTestBarcode] = useState('SR003026');
@@ -165,7 +165,7 @@ export default function PrintSettings() {
           }
           .tab-btn { padding: 12px 24px; font-weight: bold; cursor: pointer; border-bottom: 3px solid transparent; color: #718096; transition: all 0.2s; background: none; border: none; }
           .tab-btn.active { border-bottom: 3px solid #D91A1A; color: #D91A1A; background: #FFF5F5; }
-          .receipt-preview { width: 300px; background: white; box-shadow: 0 4px 20px rgba(0,0,0,0.06); padding: 20px; font-family: system-ui, sans-serif; font-size: 11px; border-top: 10px solid #D91A1A; margin: 0 auto; border: 1px solid #E2E8F0; }
+          .receipt-preview { width: 300px; background: white; box-shadow: 0 4px 20px rgba(0,0,0,0.06); padding: 20px 5mm; font-family: 'Tahoma', 'Leelawadee UI', sans-serif; font-size: 11px; border-top: 10px solid #D91A1A; margin: 0 auto; border: 1px solid #E2E8F0; box-sizing: border-box; }
           .barcode-preview-row { display: flex; gap: 8px; background: #EDF2F7; padding: 10px; border-radius: 8px; justify-content: center; }
           .barcode-preview-item { width: 95px; min-height: 75px; background: white; border: 1px solid #CBD5E0; border-radius: 4px; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 4px; font-family: Arial, sans-serif; text-align: center; font-size: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
           .p-barcode-font { 
@@ -358,12 +358,12 @@ export default function PrintSettings() {
               <div 
                 className="receipt-preview shadow-lg" 
                 style={{ 
-                  width: `${settings.receiptWidth || 72}mm`, 
-                  fontSize: `${settings.receiptFontSize || 11}px`,
+                  width: `${settings.receiptWidth || 74}mm`, 
+                  fontSize: `${(settings.receiptFontSize || 11) * 0.9}px`,
                   marginLeft: `${settings.receiptLeftMargin || 0}mm`,
                   background: 'white', 
-                  padding: '15px', 
-                  fontFamily: "system-ui, -apple-system, sans-serif", 
+                  padding: '15px 5mm', 
+                  fontFamily: "'Tahoma', 'Leelawadee UI', sans-serif", 
                   color: '#000',
                   borderTop: '10px solid #D91A1A', 
                   border: '1px solid #E2E8F0',
@@ -388,7 +388,7 @@ export default function PrintSettings() {
 
                 <div style={{ textAlign: 'center', letterSpacing: '-1px', marginBottom: '5px' }}>==========================================</div>
         
-                <div style={{ display: 'flex', fontWeight: 'bold', fontSize: '1em', marginBottom: '5px' }}>
+                <div style={{ display: 'flex', fontWeight: 'bold', fontSize: '0.85em', marginBottom: '5px' }}>
                   <div style={{ flex: 1 }}>Items/Services</div>
                   <div style={{ width: '40px', flexShrink: 0, textAlign: 'right' }}>Qty.</div>
                   <div style={{ width: '60px', flexShrink: 0, textAlign: 'right' }}>Price</div>
@@ -397,19 +397,16 @@ export default function PrintSettings() {
 
                 <div style={{ textAlign: 'center', letterSpacing: '-1px', marginBottom: '5px' }}>==========================================</div>
 
-                <div style={{ marginBottom: '8px' }}>
-                    <div style={{ fontSize: '1.1em', fontWeight: 'bold' }}>SR000873 / 125.-</div>
-                    <div style={{ display: 'flex', fontSize: '1em', alignItems: 'flex-start' }}>
-                    <div style={{ flex: 1, paddingLeft: '5px', fontSize: '0.9em', color: '#333' }}>ตัวอย่างสินค้า</div>
-                    <div style={{ width: '40px', flexShrink: 0, textAlign: 'right' }}>1.00x</div>
-                    <div style={{ width: '60px', flexShrink: 0, textAlign: 'right' }}>125.00</div>
-                    <div style={{ width: '65px', flexShrink: 0, textAlign: 'right' }}>125.00</div>
-                    </div>
+                <div style={{ display: 'flex', fontSize: '0.85em', alignItems: 'flex-start', marginBottom: '4px' }}>
+                  <div style={{ flex: 1, fontWeight: 'bold' }}>SR000873 /125.-</div>
+                  <div style={{ width: '40px', flexShrink: 0, textAlign: 'right' }}>1.00x</div>
+                  <div style={{ width: '60px', flexShrink: 0, textAlign: 'right' }}>125.00</div>
+                  <div style={{ width: '65px', flexShrink: 0, textAlign: 'right' }}>125.00</div>
                 </div>
 
                 <div style={{ textAlign: 'center', letterSpacing: '-1px', marginBottom: '5px' }}>------------------------------------------</div>
 
-                <div style={{ fontSize: '1.1em', paddingLeft: '40%' }}>
+                <div style={{ fontSize: '0.9em', paddingLeft: '40%' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
                     <span>Sub-Total</span>
                     <span>125.00</span>
@@ -484,7 +481,7 @@ export default function PrintSettings() {
       {/* Hidden Test Print Area - ขยับไปไกลๆ แทน opacity เพื่อให้ html2canvas ทำงานได้ดีที่สุด */}
       <div className="test-print-area" style={{ position: 'fixed', left: '-5000px', top: 0, zIndex: -1 }}>
         {activeTab === 'receipt' ? (
-          <div id="test-receipt-print-area" className="print-receipt-80" style={{ width: `${settings.receiptWidth}mm`, margin: '0', color: '#000', fontFamily: "system-ui, sans-serif", padding: '10px 0', background: 'white', lineHeight: '1.2' }}>
+          <div id="test-receipt-print-area" className="print-receipt-80" style={{ width: `${settings.receiptWidth || 74}mm`, margin: '0', color: '#000', fontFamily: "'Tahoma', 'Leelawadee UI', sans-serif", padding: '10px 4mm', background: 'white', lineHeight: '1.2', boxSizing: 'border-box', fontSize: `${(settings.receiptFontSize || 11) * 0.9}px` }}>
             {/* Header */}
             <div style={{ textAlign: 'center', marginBottom: '15px' }}>
               <div style={{ fontWeight: 'bold', fontSize: '20px', marginBottom: '2px', textTransform: 'uppercase' }}>{settings.shopName}</div>
@@ -501,7 +498,7 @@ export default function PrintSettings() {
 
             <div style={{ textAlign: 'center', letterSpacing: '-1px', marginBottom: '5px' }}>==========================================</div>
             
-            <div style={{ display: 'flex', fontWeight: 'bold', fontSize: '13px', marginBottom: '5px' }}>
+            <div style={{ display: 'flex', fontWeight: 'bold', fontSize: '12px', marginBottom: '5px' }}>
               <div style={{ flex: 1 }}>Items/Services</div>
               <div style={{ width: '50px', flexShrink: 0, textAlign: 'right' }}>Qty.</div>
               <div style={{ width: '70px', flexShrink: 0, textAlign: 'right' }}>Price</div>
@@ -511,20 +508,17 @@ export default function PrintSettings() {
             <div style={{ textAlign: 'center', letterSpacing: '-1px', marginBottom: '5px' }}>==========================================</div>
 
             {/* Sample Item */}
-            <div style={{ marginBottom: '8px' }}>
-              <div style={{ fontSize: '14px', fontWeight: 'bold' }}>SR-TEST / 100.-</div>
-              <div style={{ display: 'flex', fontSize: '13px' }}>
-                <div style={{ flex: 1, paddingLeft: '5px', fontSize: '12px' }}>ตัวอย่างสินค้าทดสอบ</div>
-                <div style={{ width: '50px', flexShrink: 0, textAlign: 'right' }}>1.00x</div>
-                <div style={{ width: '70px', flexShrink: 0, textAlign: 'right' }}>100.00</div>
-                <div style={{ width: '80px', flexShrink: 0, textAlign: 'right' }}>100.00</div>
-              </div>
+            <div style={{ display: 'flex', fontSize: '11px', alignItems: 'flex-start', marginBottom: '4px' }}>
+              <div style={{ flex: 1, fontWeight: 'bold' }}>SR-TEST /100.-</div>
+              <div style={{ width: '50px', flexShrink: 0, textAlign: 'right' }}>1.00x</div>
+              <div style={{ width: '70px', flexShrink: 0, textAlign: 'right' }}>100.00</div>
+              <div style={{ width: '80px', flexShrink: 0, textAlign: 'right' }}>100.00</div>
             </div>
 
             <div style={{ textAlign: 'center', letterSpacing: '-1px', marginBottom: '5px' }}>------------------------------------------</div>
 
             {/* Totals Section */}
-            <div style={{ fontSize: '14px', paddingLeft: '40%' }}>
+            <div style={{ fontSize: '12px', paddingLeft: '40%' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
                 <span>Sub-Total</span>
                 <span>100.00</span>

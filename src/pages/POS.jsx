@@ -162,7 +162,19 @@ export default function POS() {
       // เล็งโฟกัสกลับไปที่ช่องเดิม
       setTimeout(() => searchInputRef.current?.focus(), 100);
     } else {
-      // ไม่บังคับ Alert เพื่อไม่ให้ขัดจังหวะ แต่อาจจะแค่เก็บ searchTerm ไว้
+      // 📝 บันทึกประวัติการยิงบาร์โค้ดไม่สำเร็จ (Audit Unknown Barcode)
+      const unknownBarcode = searchTerm.trim();
+      addDoc(collection(db, 'system_logs'), {
+        type: 'pos',
+        action: '⚠️ ยิงบาร์โค้ดไม่พบสินค้า',
+        detail: `บาร์โค้ด: ${unknownBarcode} (พยายามยิงที่หน้าขายแต่ไม่มีในระบบ)`,
+        operator: 'Admin Staff',
+        timestamp: serverTimestamp()
+      });
+
+      alert(`❌ ไม่พบสินค้า: บาร์โค้ด [${unknownBarcode}] ไม่มีในระบบ\n(ระบบได้บันทึกประวัตินี้ไว้เพื่อให้ผู้จัดการตรวจสอบแล้วครับ)`);
+      setSearchTerm('');
+      setTimeout(() => searchInputRef.current?.focus(), 100);
     }
   };
 

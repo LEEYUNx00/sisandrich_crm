@@ -88,13 +88,14 @@ export default function ReceiptModal({ receiptData, onClose, onPrint }) {
       {/* Actual Printable Template */}
       {/* Actual Printable Template (XP-80 Optimized) */}
         <div className="print-area" style={{ 
-          width: '65mm', 
+          width: `${printSettings.receiptWidth || 74}mm`, 
           marginLeft: `${printSettings.receiptLeftMargin || 0}mm`, 
-          fontSize: `${printSettings.receiptFontSize || 13}px`,
+          fontSize: `${(printSettings.receiptFontSize || 12) * 0.9}px`,
           color: '#000', 
-          fontFamily: "system-ui, -apple-system, sans-serif", 
-          padding: '5px 0',
-          lineHeight: '1.2'
+          fontFamily: "'Tahoma', 'Leelawadee UI', 'Sukhumvit Set', sans-serif", 
+          padding: '5px 4mm',
+          lineHeight: '1.2',
+          boxSizing: 'border-box'
         }}>
         
         <div style={{ textAlign: 'center', marginBottom: '15px' }}>
@@ -115,7 +116,7 @@ export default function ReceiptModal({ receiptData, onClose, onPrint }) {
 
         <div style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '10px', margin: '8px 0' }}>-------------------------------------------------</div>
         
-        <div style={{ display: 'flex', fontWeight: 'bold', fontSize: '1em', marginBottom: '5px' }}>
+        <div style={{ display: 'flex', fontWeight: 'bold', fontSize: '0.85em', marginBottom: '5px' }}>
           <div style={{ flex: 1 }}>Items/Services</div>
           <div style={{ width: '40px', flexShrink: 0, textAlign: 'right' }}>Qty.</div>
           <div style={{ width: '60px', flexShrink: 0, textAlign: 'right' }}>Price</div>
@@ -125,20 +126,17 @@ export default function ReceiptModal({ receiptData, onClose, onPrint }) {
         <div style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '10px', margin: '4px 0' }}>-------------------------------------------------</div>
 
         {receiptData.items.map((item, idx) => (
-          <div key={idx} style={{ marginBottom: '8px' }}>
-            <div style={{ fontSize: '1.1em', fontWeight: 'bold' }}>{item.sku} / {item.price.toLocaleString()}.-</div>
-            <div style={{ display: 'flex', fontSize: '1em', alignItems: 'flex-start' }}>
-              <div style={{ flex: 1, paddingLeft: '5px', fontSize: '0.9em', color: '#333' }}>{item.name}</div>
-              <div style={{ width: '40px', flexShrink: 0, textAlign: 'right' }}>{(item.qty || 0).toFixed(2)}x</div>
-              <div style={{ width: '60px', flexShrink: 0, textAlign: 'right' }}>{(item.price || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}</div>
-              <div style={{ width: '65px', flexShrink: 0, textAlign: 'right' }}>{(item.subtotal || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}</div>
-            </div>
+          <div key={idx} style={{ display: 'flex', fontSize: '0.85em', alignItems: 'flex-start', marginBottom: '4px' }}>
+            <div style={{ flex: 1, fontWeight: 'bold', paddingRight: '4px' }}>{item.sku} /{item.price.toLocaleString()}.-</div>
+            <div style={{ width: '40px', flexShrink: 0, textAlign: 'right' }}>{(item.qty || 0).toFixed(2)}x</div>
+            <div style={{ width: '60px', flexShrink: 0, textAlign: 'right' }}>{(item.price || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}</div>
+            <div style={{ width: '65px', flexShrink: 0, textAlign: 'right' }}>{(item.subtotal || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}</div>
           </div>
         ))}
 
         <div style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '10px', margin: '8px 0' }}>-------------------------------------------------</div>
 
-        <div style={{ fontSize: '1.1em', paddingLeft: '40%' }}>
+        <div style={{ fontSize: '0.9em', paddingLeft: '40%' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
             <span>Sub-Total</span>
             <span>{(receiptData.subTotal || receiptData.grandTotal || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
