@@ -598,7 +598,7 @@ export default function POS() {
 
         // ถ่ายภาพระดับสตูดิโอ (เพิ่มความทนทานต่อ CORS)
         const canvas = await html2canvas(receiptElement, {
-          scale: 3.0,
+          scale: 4.0,
           useCORS: true,
           allowTaint: false, // ห้ามใช้รูปที่ติด Proxy เพื่อไม่ให้ Canvas เสีย (Tainted)
           backgroundColor: '#ffffff',

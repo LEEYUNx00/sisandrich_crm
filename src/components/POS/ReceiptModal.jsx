@@ -92,10 +92,11 @@ export default function ReceiptModal({ receiptData, onClose, onPrint }) {
           marginLeft: `${printSettings.receiptLeftMargin || 0}mm`, 
           fontSize: `${printSettings.receiptFontSize || 11}px`,
           color: '#000', 
-          fontFamily: "'Tahoma', 'Leelawadee UI', 'Sukhumvit Set', sans-serif", 
-          fontWeight: '600',
+          fontFamily: "'Tahoma', 'Leelawadee UI', 'Courier New', sans-serif", 
+          fontWeight: '700',
           WebkitFontSmoothing: 'none',
           MozOsxFontSmoothing: 'grayscale',
+          filter: 'contrast(10) grayscale(1)',
           padding: '5px 4mm',
           lineHeight: '1.2',
           boxSizing: 'border-box'
@@ -195,7 +196,7 @@ export default function ReceiptModal({ receiptData, onClose, onPrint }) {
         <div style={{ textAlign: 'center', fontSize: '11px', marginTop: '20px', letterSpacing: '2px' }}>
           ********
         </div>
-        <div style={{ height: '100px' }}></div>
+        <div style={{ height: '30px' }}></div>
       </div>
     </>
   );

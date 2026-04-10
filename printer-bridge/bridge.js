@@ -48,17 +48,20 @@ app.post('/print-receipt', (req, res) => {
             $ev = $args[1];
             $g = $ev.Graphics;
             
-            # บังคับการวาดภาพแบบ Pixel-Perfect ไม่ให้มีการเกลี่ยสี (Anti-aliasing) ซึ่งทำให้ตัวอักษรเบลอ
+            # 100% Contrast Correction: บังคับให้หัวพิมพ์ทำงานแบบ Dot-to-Dot ไม่มีการเกลี่ยสี
             $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::NearestNeighbor;
             $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::None;
-            $g.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::Half;
+            $g.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::None;
             $g.CompositingQuality = [System.Drawing.Drawing2D.CompositingQuality]::HighSpeed;
+            $g.TextRenderingHint = [System.Drawing.Text.TextRenderingHint]::SingleBitPerPixelGridFit;
 
             $targetWidth = $ev.PageBounds.Width;
             $factor = $targetWidth / $image.Width;
             $targetHeight = $image.Height * $factor;
             
-            $ev.Graphics.DrawImage($image, 0, 0, [int]$targetWidth, [int]$targetHeight);
+            # วาดภาพลงบนพื้นที่บิล
+            $rect = New-Object System.Drawing.RectangleF(0, 0, $targetWidth, $targetHeight);
+            $g.DrawImage($image, $rect);
             $ev.HasMorePages = $false;
         });
         $pd.Print();
