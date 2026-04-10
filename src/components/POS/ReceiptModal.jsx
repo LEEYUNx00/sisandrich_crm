@@ -194,7 +194,7 @@ export default function ReceiptModal({ receiptData, onClose, onPrint }) {
         <div style={{ textAlign: 'center', fontSize: '11px', marginTop: '20px', letterSpacing: '2px' }}>
           ********
         </div>
-        <div style={{ height: '60px' }}></div>
+        <div style={{ height: '100px' }}></div>
       </div>
     </>
   );

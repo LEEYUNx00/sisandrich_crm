@@ -54,11 +54,6 @@ app.post('/print-receipt', (req, res) => {
         });
         $pd.Print();
         $image.Dispose();
-
-        # สั่งตัดกระดาษ
-        $lineFeed = [char]10 + [char]10 + [char]10 + [char]10 + [char]10;
-        $cutCommand = [char]29 + [char]86 + [char]66 + [char]0;
-        $lineFeed + $cutCommand | Out-Printer -Name $pName;
     `;
 
     const psFile = path.join(__dirname, 'print_receipt.ps1');

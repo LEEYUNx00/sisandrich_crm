@@ -881,6 +881,7 @@ export default function POS() {
         isProcessing={isProcessing}
         processCheckout={processCheckout}
         setShowMethodSelector={setShowMethodSelector}
+        setShowAddMemberModal={setShowAddMemberModal}
         selectedPromotion={selectedPromotion}
         employees={employees}
         selectedSeller={selectedSeller}

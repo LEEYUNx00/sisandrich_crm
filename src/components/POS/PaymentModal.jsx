@@ -24,6 +24,7 @@ export default function PaymentModal({
   isProcessing,
   processCheckout,
   setShowMethodSelector,
+  setShowAddMemberModal,
   selectedPromotion,
   employees,
   selectedSeller,
@@ -197,6 +198,25 @@ export default function PaymentModal({
                       <X size={14} />
                     </button>
                   )}
+                  <button 
+                    onClick={() => setShowAddMemberModal(true)}
+                    style={{ 
+                      background: '#48bb78', 
+                      color: 'white', 
+                      border: 'none', 
+                      borderRadius: '8px', 
+                      padding: '4px 8px', 
+                      fontSize: '11px', 
+                      fontWeight: 'bold', 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: '4px',
+                      cursor: 'pointer',
+                      boxShadow: '0 2px 4px rgba(72, 187, 120, 0.2)'
+                    }}
+                  >
+                    <Plus size={12} />
+                  </button>
                 </div>
 
                 {/* Search Results Dropdown */}
@@ -211,17 +231,43 @@ export default function PaymentModal({
                     borderRadius: '16px', 
                     boxShadow: '0 10px 25px -5px rgba(0,0,0,0.1), 0 8px 10px -6px rgba(0,0,0,0.1)',
                     border: '1px solid #e2e8f0',
-                    zIndex: 10000,
+                    zIndex: 1000,
                     overflow: 'hidden'
                   }}>
+                    {/* New Member Option */}
+                    <div style={{ padding: '8px 12px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                       <span style={{ fontSize: '11px', fontWeight: 'bold', color: '#64748b', textTransform: 'uppercase' }}>สมาชิก</span>
+                       <button 
+                         onClick={(e) => { e.stopPropagation(); setShowAddMemberModal(true); }}
+                         style={{ 
+                            background: '#48bb78', 
+                            color: 'white', 
+                            border: 'none', 
+                            borderRadius: '8px', 
+                            padding: '4px 8px', 
+                            fontSize: '11px', 
+                            fontWeight: 'bold', 
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            gap: '4px',
+                            cursor: 'pointer'
+                         }}
+                       >
+                         <Plus size={12} /> สมัครใหม่
+                       </button>
+                    </div>
+
+                    {/* Walk-in Option */}
                     <div 
                       onClick={() => handleSelectCustomer('')}
-                      style={{ padding: '10px 16px', fontSize: '13px', cursor: 'pointer', borderBottom: '1px solid #f1f5f9', color: '#64748b' }}
+                      style={{ padding: '12px 16px', fontSize: '13px', cursor: 'pointer', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', gap: '8px', color: '#4A5568' }}
                       onMouseOver={e => e.currentTarget.style.background = '#f8fafc'}
                       onMouseOut={e => e.currentTarget.style.background = 'transparent'}
                     >
-                      🚶 Walk-in Customer (ลูกค้าทั่วไป)
+                      <span>🏃</span> Walk-in Customer (ลูกค้าทั่วไป)
                     </div>
+
+                    {/* Filtered Customers List */}
                     {filteredCustomers.map(c => (
                       <div 
                         key={c.id}
@@ -239,6 +285,7 @@ export default function PaymentModal({
                         </div>
                       </div>
                     ))}
+                    
                     {filteredCustomers.length === 0 && customerSearch && (
                       <div style={{ padding: '16px', textAlign: 'center', fontSize: '12px', color: '#94a3b8' }}>
                          ไม่พบข้อมูลสมาชิก...
