@@ -16,6 +16,115 @@ app.use(express.json({ limit: '100mb' }));
 
 console.log('--- SiS & RICH Printer Bridge (V3: AUTO-CUT ENABLED) ---');
 
+app.post('/print-receipt-text', (req, res) => {
+    const { text, printerName } = req.body;
+    if (!text) return res.status(400).json({ error: 'No text data' });
+
+    const requestedPrinter = printerName || 'XP-80C';
+    console.log(`[RECEIPT-RAW] Encoding and printing to ${requestedPrinter}`);
+
+    // Helper: แปลง UTF-16 (JS String) เป็น CP874 (Thai Printer Encoding)
+    const encodeThai = (str) => {
+        let buf = Buffer.alloc(str.length);
+        for (let i = 0; i < str.length; i++) {
+            let code = str.charCodeAt(i);
+            if (code >= 0x0E01 && code <= 0x0E5B) {
+                // Thai range in Unicode to CP874
+                buf[i] = code - 0x0E00 + 0xA0;
+            } else if (code < 128) {
+                // ASCII
+                buf[i] = code;
+            } else {
+                // Others (replace with space or similar)
+                buf[i] = 32;
+            }
+        }
+        return buf;
+    };
+
+    // ESC/POS Commands
+    const init = Buffer.from([0x1B, 0x40]); // ESC @
+    const selectThai = Buffer.from([0x1B, 0x74, 0x1A]); // ESC t 26 (Thai CP874)
+    const body = encodeThai(text);
+    const feedAndCut = Buffer.from([0x0A, 0x0A, 0x0A, 0x0A, 0x0A, 0x1D, 0x56, 0x42, 0x00]); // GS V 66 0
+
+    const finalBuffer = Buffer.concat([init, selectThai, body, feedAndCut]);
+
+    const tempFile = path.join(__dirname, 'temp_receipt.raw');
+    fs.writeFileSync(tempFile, finalBuffer);
+
+    const psScript = `
+        Add-Type -TypeDefinition @"
+        using System;
+        using System.Runtime.InteropServices;
+        public class RawPrinterHelper {
+            [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+            public class DOCINFOW {
+                [MarshalAs(UnmanagedType.LPWStr)] public string pDocName;
+                [MarshalAs(UnmanagedType.LPWStr)] public string pOutputFile;
+                [MarshalAs(UnmanagedType.LPWStr)] public string pDataType;
+            }
+            [DllImport("winspool.Drv", EntryPoint = "OpenPrinterW", SetLastError = true, CharSet = CharSet.Unicode, ExactSpelling = true, CallingConvention = CallingConvention.StdCall)]
+            public static extern bool OpenPrinter([MarshalAs(UnmanagedType.LPWStr)] string szPrinter, out IntPtr hPrinter, IntPtr pd);
+            
+            [DllImport("winspool.Drv", EntryPoint = "ClosePrinter", SetLastError = true, ExactSpelling = true, CallingConvention = CallingConvention.StdCall)]
+            public static extern bool ClosePrinter(IntPtr hPrinter);
+            
+            [DllImport("winspool.Drv", EntryPoint = "StartDocPrinterW", SetLastError = true, CharSet = CharSet.Unicode, ExactSpelling = true, CallingConvention = CallingConvention.StdCall)]
+            public static extern bool StartDocPrinter(IntPtr hPrinter, Int32 level, [In, MarshalAs(UnmanagedType.LPStruct)] DOCINFOW di);
+            
+            [DllImport("winspool.Drv", EntryPoint = "EndDocPrinter", SetLastError = true, ExactSpelling = true, CallingConvention = CallingConvention.StdCall)]
+            public static extern bool EndDocPrinter(IntPtr hPrinter);
+            
+            [DllImport("winspool.Drv", EntryPoint = "StartPagePrinter", SetLastError = true, ExactSpelling = true, CallingConvention = CallingConvention.StdCall)]
+            public static extern bool StartPagePrinter(IntPtr hPrinter);
+            
+            [DllImport("winspool.Drv", EntryPoint = "EndPagePrinter", SetLastError = true, ExactSpelling = true, CallingConvention = CallingConvention.StdCall)]
+            public static extern bool EndPagePrinter(IntPtr hPrinter);
+            
+            [DllImport("winspool.Drv", EntryPoint = "WritePrinter", SetLastError = true, ExactSpelling = true, CallingConvention = CallingConvention.StdCall)]
+            public static extern bool WritePrinter(IntPtr hPrinter, IntPtr pBytes, Int32 dwCount, out Int32 dwWritten);
+            
+            public static bool SendBytesToPrinter(string szPrinterName, byte[] pBytes) {
+                Int32 dwCount = pBytes.Length;
+                IntPtr pUnmanagedBytes = Marshal.AllocCoTaskMem(dwCount);
+                Marshal.Copy(pBytes, 0, pUnmanagedBytes, dwCount);
+                Int32 dwWritten = 0;
+                IntPtr hPrinter = new IntPtr(0);
+                DOCINFOW di = new DOCINFOW();
+                bool bSuccess = false;
+                di.pDocName = "RAW ESCPOS"; di.pDataType = "RAW";
+                if (OpenPrinter(szPrinterName, out hPrinter, IntPtr.Zero)) {
+                    if (StartDocPrinter(hPrinter, 1, di)) {
+                        if (StartPagePrinter(hPrinter)) {
+                            bSuccess = WritePrinter(hPrinter, pUnmanagedBytes, dwCount, out dwWritten);
+                            EndPagePrinter(hPrinter);
+                        }
+                        EndDocPrinter(hPrinter);
+                    }
+                    ClosePrinter(hPrinter);
+                }
+                Marshal.FreeCoTaskMem(pUnmanagedBytes);
+                return bSuccess;
+            }
+        }
+"@;
+        $bytes = [System.IO.File]::ReadAllBytes('${tempFile.replace(/\\/g, '\\\\')}');
+        [RawPrinterHelper]::SendBytesToPrinter('${requestedPrinter}', $bytes);
+    `;
+
+    const psFile = path.join(__dirname, 'print_raw_escpos.ps1');
+    fs.writeFileSync(psFile, psScript, 'utf8');
+
+    exec(`powershell -ExecutionPolicy Bypass -File "${psFile}"`, (error) => {
+        if (error) {
+            console.error(`Error: ${error.message}`);
+            return res.status(500).json({ success: false });
+        }
+        res.json({ success: true });
+    });
+});
+
 app.post('/print-receipt', (req, res) => {
     const { image, printerName, billId } = req.body;
     if (!image) return res.status(400).json({ error: 'No image data' });

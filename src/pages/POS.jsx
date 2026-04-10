@@ -581,6 +581,100 @@ export default function POS() {
     searchInputRef.current?.focus();
   };
 
+  const printReceiptNativeText = async () => {
+    if (bridgeStatus === 'Connected' && receiptData) {
+      try {
+        console.log("📝 Generating Native Text Receipt...");
+        
+        const settings = printSettings || { shopName: 'SIS&RICH', address: '', blessings: 'ขอบคุณที่แวะมาอุดหนุนค่ะ' };
+        const items = receiptData.items || [];
+        
+        // Helper สร้างขีดคั่น
+        const line = "------------------------------------------\n";
+
+        // ESC/POS Formatting Codes (ใช้ได้โดยตรงเพราะ Bridge ไม่แปลงค่า < 32)
+        const dHeight = "\x1B\x21\x10"; // Double height
+        const normal = "\x1B\x21\x00"; // Normal size
+        const center = "\x1B\x61\x01"; // Center align
+        const left = "\x1B\x61\x00"; // Left align
+        const bold = "\x1B\x45\x01"; // Bold on
+        const resetBold = "\x1B\x45\x00"; // Bold off
+
+        let text = "";
+        
+        // Header
+        text += center + dHeight + (settings.shopName || "SIS&RICH") + "\n";
+        text += "RECEIPT" + normal + "\n";
+        
+        // Address
+        const addrLines = (settings.address || "").split('\n');
+        addrLines.forEach(l => {
+          text += l + "\n";
+        });
+        text += "\n";
+
+        // Info
+        text += left + `Date: ${receiptData.printedDate?.toLocaleString('th-TH') || new Date().toLocaleString('th-TH')}\n`;
+        text += `Receipt No.: ${receiptData.billId}\n`;
+        text += `Cashier: ${receiptData.staff || "Admin Staff"}\n`;
+        text += `Member: ${receiptData.customer?.name || "Walk-in Customer"}\n`;
+        text += line;
+        
+        // Items Header
+        text += bold + "Items/Services       Qty.   Price    Total\n" + resetBold;
+        text += line;
+        
+        // Items List
+        items.forEach(item => {
+          const sku = (item.sku || 'Item').substring(0, 18).padEnd(18);
+          const qty = `${(item.qty || 0).toFixed(0)}x`.padStart(5);
+          const price = `${(item.price || 0).toLocaleString()}`.padStart(8);
+          const total = `${(item.subtotal || 0).toLocaleString()}`.padStart(9);
+          text += `${sku}${qty}${price}${total}\n`;
+        });
+        
+        text += line;
+        
+        // Summary
+        const subtotal = (receiptData.subTotal || 0).toLocaleString();
+        const discount = (receiptData.discountAmount || 0).toLocaleString();
+        const grandTotal = (receiptData.grandTotal || 0).toLocaleString();
+        const paid = (receiptData.totalPaid || 0).toLocaleString();
+        const change = (receiptData.changeAmount || 0).toLocaleString();
+
+        text += " ".repeat(15) + `Sub-Total: ${subtotal.padStart(15)}\n`;
+        if (receiptData.discountAmount > 0) {
+          text += " ".repeat(15) + `Discount:  -${discount.padStart(14)}\n`;
+        }
+        text += bold + " ".repeat(15) + `Total:     ${grandTotal.padStart(15)}\n` + resetBold;
+        text += " ".repeat(15) + `Paid:      ${paid.padStart(15)}\n`;
+        text += " ".repeat(15) + `Change:    ${change.padStart(15)}\n\n`;
+        
+        // Footer
+        text += center + "Thank You\n";
+        text += (settings.blessings?.split('\n')[0] || "ขอให้รวยๆ นะคะ") + "\n";
+        text += "\n\n";
+
+        // ส่งข้อความไปที่โปรแกรมสะพาน SIS_RICH_Bridge.exe
+        await fetch('http://localhost:8000/print-receipt-text', {
+          method: 'POST',
+          mode: 'cors',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            printerName: 'XP-80C',
+            text: text
+          })
+        });
+
+        console.log("✅ Native Text Receipt Sent!");
+      } catch (err) {
+        console.error("Native print failed:", err);
+        // Fallback to Image Print if something died
+        printReceipt();
+      }
+    }
+  };
+
   const printReceipt = async () => {
     // 📸 ถ่ายรูปภาพบิลดีไซน์จริง (Mirror of Management Preview)
     if (bridgeStatus === 'Connected' && receiptData) {
@@ -963,7 +1057,7 @@ export default function POS() {
       <ReceiptModal
         receiptData={receiptData}
         onClose={handleCloseReceipt}
-        onPrint={printReceipt}
+        onPrint={printReceiptNativeText}
       />
 
       {/* Quick Add Product Modal */}
