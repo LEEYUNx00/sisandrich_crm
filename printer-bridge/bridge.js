@@ -46,7 +46,7 @@ app.post('/print-receipt-text', (req, res) => {
     const init = Buffer.from([0x1B, 0x40]); // ESC @
     const selectThai = Buffer.from([0x1B, 0x74, 0x1A]); // ESC t 26 (Thai CP874)
     const body = encodeThai(text);
-    const feedAndCut = Buffer.from([0x0A, 0x0A, 0x0A, 0x0A, 0x0A, 0x1D, 0x56, 0x42, 0x00]); // GS V 66 0
+    const feedAndCut = Buffer.from([0x0A, 0x0A, 0x1D, 0x56, 0x01]); // 2 LFs + GS V 1 (Standard Full Cut)
 
     const finalBuffer = Buffer.concat([init, selectThai, body, feedAndCut]);
 
