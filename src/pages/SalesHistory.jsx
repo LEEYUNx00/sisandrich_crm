@@ -133,35 +133,68 @@ export default function SalesHistory() {
   const handlePrint = async () => {
     if (!selectedReceipt) return;
     
-    // First try the Bridge print (High Quality / Mirror of POS)
     try {
-      console.log("📸 Capturing Receipt Layout for Reprint...");
-      const receiptElement = document.querySelector('.print-area');
-      if (!receiptElement) throw new Error("Template not found");
+      // 1. ดึงการตั้งค่าหัวบิล
+      const docRef = doc(db, 'settings', 'receipt');
+      const docSnap = await getDoc(docRef);
+      const printSettings = docSnap.exists() ? docSnap.data() : { shopName: 'Sis&Rich', address: '' };
 
-      const canvas = await html2canvas(receiptElement, {
-        scale: 4.0,
-        useCORS: true,
-        backgroundColor: '#ffffff',
+      // 2. ตั้งค่ารหัสสั่งการเครื่องพิมพ์ (ESC/POS)
+      const dHeight = "\x1B\x21\x10"; // Double height
+      const normal = "\x1B\x21\x00"; 
+      const center = "\x1B\x61\x01"; 
+      const left = "\x1B\x61\x00"; 
+      const bold = "\x1B\x45\x01"; 
+      const resetBold = "\x1B\x45\x00";
+
+      // 3. จัดหน้าบิลแบบ Text
+      let text = center + dHeight + bold + printSettings.shopName + "\n";
+      text += normal + bold + "RECEIPT" + resetBold + "\n";
+      text += (printSettings.address || "").replace(/\\n/g, "\n") + "\n\n";
+      
+      text += left;
+      text += `Date: ${selectedReceipt.timestamp?.toDate().toLocaleString('th-TH') || new Date().toLocaleString('th-TH')}\n`;
+      text += `Receipt No.: ${selectedReceipt.billId || selectedReceipt.id.slice(0, 8).toUpperCase()}\n`;
+      text += `Staff: ${selectedReceipt.staff || 'Admin'}\n`;
+      text += `Customer: ${selectedReceipt.customer?.name || 'General'}\n`;
+
+      text += "------------------------------------------\n";
+      text += "Items/Services           Qty.      Total\n";
+      text += "------------------------------------------\n";
+
+      selectedReceipt.items.forEach(item => {
+        const displaySKU = (item.sku || "").padEnd(25);
+        const displayQty = `${item.qty || 1}x`.padEnd(8);
+        const displayTotal = (item.subtotal || item.price).toLocaleString();
+        text += `${displaySKU}${displayQty}${displayTotal}\n`;
       });
 
-      const imageData = canvas.toDataURL('image/png');
+      text += "------------------------------------------\n";
+      text += `Sub-Total: ${selectedReceipt.subTotal?.toLocaleString()}\n`;
+      text += bold + `TOTAL: ${selectedReceipt.grandTotal?.toLocaleString()}` + resetBold + "\n";
+      text += `Payment: ${selectedReceipt.paymentMethod || 'Cash'}\n`;
+      text += `Change: ${selectedReceipt.changeAmount?.toLocaleString() || 0}\n`;
+      text += "------------------------------------------\n";
+      
+      text += center + "\nThank You\n";
+      text += (printSettings.receiptFooter || "").replace(/\\n/g, "\n") + "\n\n";
 
-      const response = await fetch('http://127.0.0.1:8000/print-receipt', {
+      // 4. ส่งไปที่ Bridge (โหมด Text ความละเอียดสูงสุด)
+      await fetch('http://127.0.0.1:8000/print-receipt-text', {
         method: 'POST',
         mode: 'cors',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          printerName: 'XP-80C',
-          image: imageData,
-          billId: selectedReceipt.billId || selectedReceipt.id
+          text: text,
+          printerName: 'XP-80C'
         })
       });
-      
-      if (response.ok) return; 
+
     } catch (err) {
-      console.warn("Bridge print failed, falling back to window.print", err);
+      console.warn("Native print failed, falling back to browser print", err);
+      window.print();
     }
+  };
 
     // Fallback to standard browser print
     window.print();

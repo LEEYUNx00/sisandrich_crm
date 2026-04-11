@@ -603,8 +603,8 @@ export default function POS() {
         let text = "";
         
         // Header
-        text += center + dHeight + (settings.shopName || "SIS&RICH") + "\n";
-        text += "RECEIPT" + normal + "\n";
+        text += center + dHeight + bold + (settings.shopName || "SIS&RICH") + "\n";
+        text += bold + "RECEIPT" + resetBold + normal + "\n";
         
         // Address
         const addrLines = (settings.address || "").split('\n');
@@ -621,7 +621,7 @@ export default function POS() {
         text += line;
         
         // Items Header
-        text += bold + "Items/Services       Qty.   Price    Total\n" + resetBold;
+        text += "Items/Services       Qty.   Price    Total\n";
         text += line;
         
         // Items List

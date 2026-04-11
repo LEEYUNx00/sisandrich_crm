@@ -87,7 +87,7 @@ export default function PrintSettings() {
       const element = document.getElementById('test-receipt-print-area');
       if (!element) return window.print();
 
-      const canvas = await html2canvas(element, { scale: 2.5, useCORS: true, backgroundColor: '#ffffff' });
+      const canvas = await html2canvas(element, { scale: 4.0, useCORS: true, backgroundColor: '#ffffff' });
       const imageData = canvas.toDataURL('image/png');
 
       await fetch('http://127.0.0.1:8000/print-receipt', {

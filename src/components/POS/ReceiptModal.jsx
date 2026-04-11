@@ -96,7 +96,10 @@ export default function ReceiptModal({ receiptData, onClose, onPrint }) {
           fontWeight: '400',
           WebkitFontSmoothing: 'none',
           MozOsxFontSmoothing: 'grayscale',
-          filter: 'contrast(10) grayscale(1)',
+          fontSmooth: 'never',
+          textRendering: 'crispEdges',
+          imageRendering: 'pixelated',
+          filter: 'contrast(2000%) grayscale(1)',
           padding: '5px 4mm',
           lineHeight: '1.2',
           boxSizing: 'border-box'
