@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
 import { db } from '../firebase';
 import { collection, onSnapshot, query, orderBy, limit, doc, updateDoc, increment, addDoc, serverTimestamp, getDoc } from 'firebase/firestore';
-import { History, Search, Download, FileText, XCircle, Printer, CheckCircle, AlertCircle, X } from 'lucide-react';
+import { History, Search, Download, XCircle, Printer, CheckCircle, AlertCircle, X, FileText } from 'lucide-react';
+import ReceiptModal from '../components/POS/ReceiptModal';
+import html2canvas from 'html2canvas';
 
 export default function SalesHistory() {
   const [sales, setSales] = useState([]);
@@ -128,6 +130,43 @@ export default function SalesHistory() {
     a.click();
   };
 
+  const handlePrint = async () => {
+    if (!selectedReceipt) return;
+    
+    // First try the Bridge print (High Quality / Mirror of POS)
+    try {
+      console.log("📸 Capturing Receipt Layout for Reprint...");
+      const receiptElement = document.querySelector('.print-area');
+      if (!receiptElement) throw new Error("Template not found");
+
+      const canvas = await html2canvas(receiptElement, {
+        scale: 4.0,
+        useCORS: true,
+        backgroundColor: '#ffffff',
+      });
+
+      const imageData = canvas.toDataURL('image/png');
+
+      const response = await fetch('http://localhost:8000/print-receipt', {
+        method: 'POST',
+        mode: 'cors',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          printerName: 'XP-80C',
+          image: imageData,
+          billId: selectedReceipt.billId || selectedReceipt.id
+        })
+      });
+      
+      if (response.ok) return; 
+    } catch (err) {
+      console.warn("Bridge print failed, falling back to window.print", err);
+    }
+
+    // Fallback to standard browser print
+    window.print();
+  };
+
   const filteredSales = sales.filter(s => {
     const term = searchTerm.toLowerCase();
     const searchMatch = s.id.toLowerCase().includes(term) ||
@@ -151,13 +190,21 @@ export default function SalesHistory() {
       <style>
         {`
           @media print {
-            body * { visibility: hidden; }
-            .print-area, .print-area * { visibility: visible; }
-            .print-area {
-              position: absolute; left: 0; top: 0; width: 100%;
-              max-width: 80mm; background: white; padding: 10px;
-              color: black !important; font-family: monospace;
+            .sidebar, .top-header, .pos-layout, .card, .hide-on-print, button, nav, .animate-slide-in {
+              display: none !important;
             }
+            .print-area {
+              display: block !important;
+              visibility: visible !important;
+              position: static;
+              width: 72mm !important;
+              margin: 0 auto;
+              padding: 0;
+              background: white !important;
+              color: black !important;
+              font-family: 'Courier New', Courier, monospace;
+            }
+            @page { margin: 0; size: auto; }
           }
         `}
       </style>
@@ -276,65 +323,12 @@ export default function SalesHistory() {
         </table>
       </div>
 
-      {/* View / Print Modal */}
-      {selectedReceipt && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', zIndex: 9999, display: 'flex', justifyContent: 'center', alignItems: 'center', backdropFilter: 'blur(4px)' }}>
-          <div className="card animate-slide-in" style={{ width: '400px', backgroundColor: '#fff', padding: '0', borderRadius: '16px', overflow: 'hidden' }}>
-            <div style={{ padding: '16px', background: '#F7FAFC', borderBottom: '1px solid #E2E8F0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '8px', fontSize: '16px', color: '#2D3748' }}>
-                <FileText size={18} /> รายละเอียดบิล
-              </h3>
-              <button className="btn-icon" style={{ padding: '4px' }} onClick={() => setSelectedReceipt(null)}>
-                <X size={20} />
-              </button>
-            </div>
-
-            {/* Print Area Replica */}
-            <div className="print-area" style={{ padding: '20px', background: 'white', position: 'relative' }}>
-              <div style={{ textAlign: 'center', marginBottom: '10px', fontFamily: 'monospace' }}>
-                <h2 style={{ margin: '0 0 5px 0', fontSize: '18px' }}>SIS & RICH</h2>
-                <div style={{ fontSize: '12px' }}>ใบเสร็จรับเงิน / Receipt (Reprint)</div>
-                <div style={{ fontSize: '10px' }}>{selectedReceipt.timestamp?.toLocaleString('th-TH')}</div>
-                <div style={{ fontSize: '10px' }}>Bill No: {selectedReceipt.billId || selectedReceipt.id.slice(0, 8).toUpperCase()}</div>
-                <div style={{ fontSize: '10px' }}>Cashier: {selectedReceipt.staff || 'Admin'}</div>
-                <div style={{ fontSize: '10px', fontWeight: 'bold' }}>Seller: {selectedReceipt.seller?.name || '-'}</div>
-                {selectedReceipt.status === 'voided' && (
-                  <div style={{ color: 'red', fontWeight: 'bold', border: '1px solid red', margin: '10px 0', padding: '5px' }}>*** ยกเลิก (VOIDED) ***</div>
-                )}
-              </div>
-              
-              <div style={{ borderTop: '1px dashed black', borderBottom: '1px dashed black', padding: '10px 0', margin: '10px 0', fontFamily: 'monospace' }}>
-                {selectedReceipt.items?.map((item, idx) => (
-                  <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '5px' }}>
-                    <div style={{ flex: 1, paddingRight: '10px' }}>
-                      <div>{item.name}</div>
-                      <div style={{ fontSize: '10px' }}>{item.qty} x {(item.price || 0).toLocaleString()}</div>
-                    </div>
-                    <div style={{ textAlign: 'right' }}>
-                      {(item.subtotal || (item.qty * item.price) || 0).toLocaleString()}
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '14px', marginBottom: '5px', fontFamily: 'monospace' }}>
-                <span>TOTAL:</span>
-                <span>{(selectedReceipt.grandTotal || 0).toLocaleString()} THB</span>
-              </div>
-              
-              <div style={{ fontSize: '12px', marginBottom: '10px', fontFamily: 'monospace' }}>
-                Customer: {selectedReceipt.customer?.name || 'Walk-in'}
-              </div>
-            </div>
-
-            <div style={{ padding: '16px', display: 'flex', gap: '8px', borderTop: '1px solid #E2E8F0' }}>
-              <button className="btn" style={{ flex: 1, background: '#2D3748', color: 'white', padding: '12px', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px' }} onClick={() => window.print()}>
-                <Printer size={18} /> พิมพ์ใหม่ (Reprint)
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Integrated POS Receipt Modal */}
+      <ReceiptModal 
+        receiptData={selectedReceipt} 
+        onClose={() => setSelectedReceipt(null)}
+        onPrint={handlePrint}
+      />
 
     </div>
   );

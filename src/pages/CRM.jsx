@@ -1010,13 +1010,21 @@ export default function CRM() {
                                          {order.timestamp?.toDate ? order.timestamp.toDate().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) : ''}
                                       </span>
                                    </div>
-                                   <div style={{ fontSize: '12px', color: '#718096' }}>{order.totalQty || 0} รายการ • ชำระโดย {order.payments?.[0]?.method || 'ไม่ระบุ'}</div>
+                                    <div style={{ fontSize: '12px', color: '#718096' }}>
+                                       {order.status === 'voided' ? (
+                                         <span style={{ color: '#E53E3E', fontWeight: 'bold' }}>บิลนี้ถูกยกเลิกแล้ว</span>
+                                       ) : (
+                                         `${order.totalQty || 0} รายการ • ชำระโดย ${order.payments?.[0]?.method || 'ไม่ระบุ'}`
+                                       )}
+                                    </div>
                                 </div>
                              </div>
                              <div style={{ textAlign: 'right' }}>
-                                <div style={{ fontSize: '18px', fontWeight: '900', color: '#3182CE' }}>+ ฿{order.grandTotal?.toLocaleString()}</div>
+                                <div style={{ fontSize: '18px', fontWeight: '900', color: order.status === 'voided' ? '#CBD5E0' : '#3182CE', textDecoration: order.status === 'voided' ? 'line-through' : 'none' }}>
+                                   {order.status === 'voided' ? '' : '+ '}฿{order.grandTotal?.toLocaleString()}
+                                </div>
                                 <div style={{ fontSize: '11px', fontWeight: 'bold', color: '#D69E2E' }}>
-                                   ได้รับ {Math.floor(order.grandTotal / 100)} Points
+                                   {order.status === 'voided' ? 'POINTS VOIDED' : `ได้รับ ${Math.floor(order.grandTotal / 100)} Points`}
                                 </div>
                              </div>
                           </div>
@@ -1275,6 +1283,8 @@ const RankingTab = ({ customers }) => {
         
         snapshot.docs.forEach(doc => {
           const data = doc.data();
+          if (data.status === 'voided') return; // Skip voided sales in periodic ranking
+          
           const cid = data.customer?.id;
           if (cid) {
             spendMap[cid] = (spendMap[cid] || 0) + (data.grandTotal || 0);

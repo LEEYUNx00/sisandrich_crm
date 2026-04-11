@@ -44,12 +44,12 @@ export default function Dashboard() {
 
   // 1. Today's Sales Calculation
   const todaySalesAmount = sales
-    .filter(s => isToday(s.timestamp))
+    .filter(s => isToday(s.timestamp) && s.status !== 'voided')
     .reduce((sum, s) => sum + (s.grandTotal || 0), 0);
 
   // 2. Total Items Sold Today
   const todayItemsSold = sales
-    .filter(s => isToday(s.timestamp))
+    .filter(s => isToday(s.timestamp) && s.status !== 'voided')
     .reduce((sum, s) => sum + (s.totalQty || 0), 0);
 
   // 3. New Customers Today
@@ -74,7 +74,7 @@ export default function Dashboard() {
 
   // 6. Top Selling Products Aggregation
   const topSellingMap = {};
-  sales.forEach(sale => {
+  sales.filter(s => s.status !== 'voided').forEach(sale => {
     (sale.items || []).forEach(item => {
       if (!topSellingMap[item.name]) {
         topSellingMap[item.name] = { name: item.name, category: item.category || 'ทั่วไป', sold: 0 };
@@ -177,11 +177,19 @@ export default function Dashboard() {
               </thead>
               <tbody>
                 {recentTransactions.map(t => (
-                  <tr key={t.id}>
+                  <tr key={t.id} style={{ opacity: t.status === 'voided' ? 0.5 : 1 }}>
                     <td>{t.timestamp?.toDate ? t.timestamp.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '-'}</td>
                     <td style={{ fontWeight: 'bold' }}>{t.billId || t.id.slice(0, 8)}</td>
-                    <td style={{ color: '#10b981', fontWeight: 'bold' }}>฿{(t.grandTotal || 0).toLocaleString()}</td>
-                    <td><span className="badge badge-success">Completed</span></td>
+                    <td style={{ color: t.status === 'voided' ? '#94a3b8' : '#10b981', fontWeight: 'bold', textDecoration: t.status === 'voided' ? 'line-through' : 'none' }}>
+                      ฿{(t.grandTotal || 0).toLocaleString()}
+                    </td>
+                    <td>
+                      {t.status === 'voided' ? (
+                        <span className="badge" style={{ background: '#fee2e2', color: '#ef4444' }}>Voided</span>
+                      ) : (
+                        <span className="badge badge-success">Completed</span>
+                      )}
+                    </td>
                   </tr>
                 ))}
                 {recentTransactions.length === 0 && (
