@@ -656,7 +656,7 @@ export default function POS() {
         text += "\n\n";
 
         // ส่งข้อความไปที่โปรแกรมสะพาน SIS_RICH_Bridge.exe
-        await fetch('http://localhost:8000/print-receipt-text', {
+        await fetch('http://127.0.0.1:8000/print-receipt-text', {
           method: 'POST',
           mode: 'cors',
           headers: { 'Content-Type': 'application/json' },
@@ -711,7 +711,7 @@ export default function POS() {
         }
 
         // ส่งรูปภาพไปที่โปรแกรมสะพาน SIS_RICH_Bridge.exe (ใช้ IP 127.0.0.1)
-        const response = await fetch('http://localhost:8000/print-receipt', {
+        const response = await fetch('http://127.0.0.1:8000/print-receipt', {
           method: 'POST',
           mode: 'cors',
           credentials: 'omit',

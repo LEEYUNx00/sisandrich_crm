@@ -147,7 +147,7 @@ export default function SalesHistory() {
 
       const imageData = canvas.toDataURL('image/png');
 
-      const response = await fetch('http://localhost:8000/print-receipt', {
+      const response = await fetch('http://127.0.0.1:8000/print-receipt', {
         method: 'POST',
         mode: 'cors',
         headers: { 'Content-Type': 'application/json' },

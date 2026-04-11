@@ -61,7 +61,7 @@ export default function PrintSettings() {
   const handleQuickPrint = async () => {
     // พิมพ์บาร์โค้ดผ่าน Bridge โดยส่งเป็นภาษา TSPL (สำหรับเครื่องบาร์โค้ดโดยเฉพาะ)
     try {
-      await fetch('http://localhost:8000/print-barcode', {
+      await fetch('http://127.0.0.1:8000/print-barcode', {
         method: 'POST',
         mode: 'cors',
         credentials: 'omit',
@@ -90,7 +90,7 @@ export default function PrintSettings() {
       const canvas = await html2canvas(element, { scale: 2.5, useCORS: true, backgroundColor: '#ffffff' });
       const imageData = canvas.toDataURL('image/png');
 
-      await fetch('http://localhost:8000/print-receipt', {
+      await fetch('http://127.0.0.1:8000/print-receipt', {
         method: 'POST',
         mode: 'cors',
         credentials: 'omit',
