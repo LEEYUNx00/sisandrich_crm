@@ -93,7 +93,7 @@ export default function ReceiptModal({ receiptData, onClose, onPrint }) {
           fontSize: `${printSettings.receiptFontSize || 11}px`,
           color: '#000', 
           fontFamily: "'Tahoma', 'Leelawadee UI', 'Courier New', sans-serif", 
-          fontWeight: '700',
+          fontWeight: '400',
           WebkitFontSmoothing: 'none',
           MozOsxFontSmoothing: 'grayscale',
           filter: 'contrast(10) grayscale(1)',
@@ -118,27 +118,27 @@ export default function ReceiptModal({ receiptData, onClose, onPrint }) {
           <div style={{ display: 'flex' }}><span style={{ width: '90px' }}>Member:</span> {receiptData.customer?.name ? (receiptData.customer.nickname || receiptData.customer.name) : 'ลูกค้าทั่วไป (General)'}</div>
         </div>
 
-        <div style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '10px', margin: '8px 0' }}>-------------------------------------------------</div>
+        <div style={{ textAlign: 'center', fontSize: '10px', margin: '8px 0' }}>-------------------------------------------------</div>
         
-        <div style={{ display: 'flex', fontWeight: 'bold', fontSize: '0.85em', marginBottom: '5px' }}>
+        <div style={{ display: 'flex', fontSize: '0.85em', marginBottom: '5px' }}>
           <div style={{ flex: 1 }}>Items/Services</div>
           <div style={{ width: '40px', flexShrink: 0, textAlign: 'right' }}>Qty.</div>
           <div style={{ width: '60px', flexShrink: 0, textAlign: 'right' }}>Price</div>
           <div style={{ width: '65px', flexShrink: 0, textAlign: 'right' }}>Total</div>
         </div>
 
-        <div style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '10px', margin: '4px 0' }}>-------------------------------------------------</div>
+        <div style={{ textAlign: 'center', fontSize: '10px', margin: '4px 0' }}>-------------------------------------------------</div>
 
         {receiptData.items.map((item, idx) => (
           <div key={idx} style={{ display: 'flex', fontSize: '0.85em', alignItems: 'flex-start', marginBottom: '4px' }}>
-            <div style={{ flex: 1, fontWeight: 'bold', paddingRight: '4px' }}>{item.sku} /{item.price.toLocaleString()}.-</div>
+            <div style={{ flex: 1, paddingRight: '4px' }}>{item.sku} /{item.price.toLocaleString()}.-</div>
             <div style={{ width: '40px', flexShrink: 0, textAlign: 'right' }}>{(item.qty || 0).toFixed(2)}x</div>
             <div style={{ width: '60px', flexShrink: 0, textAlign: 'right' }}>{(item.price || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}</div>
             <div style={{ width: '65px', flexShrink: 0, textAlign: 'right' }}>{(item.subtotal || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}</div>
           </div>
         ))}
 
-        <div style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '10px', margin: '8px 0' }}>-------------------------------------------------</div>
+        <div style={{ textAlign: 'center', fontSize: '10px', margin: '8px 0' }}>-------------------------------------------------</div>
 
         <div style={{ fontSize: '0.9em', paddingLeft: '40%' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
@@ -163,14 +163,14 @@ export default function ReceiptModal({ receiptData, onClose, onPrint }) {
             <span>0.00</span>
           </div>
 
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
             <span>Change</span>
             <span>{(receiptData.changeAmount || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
           </div>
         </div>
 
         <div style={{ textAlign: 'center', marginTop: '30px', fontSize: '11px' }}>
-          <div style={{ fontWeight: 'bold', fontSize: '14px', marginBottom: '10px' }}>Thank You</div>
+          <div style={{ fontSize: '14px', marginBottom: '10px' }}>Thank You</div>
           
           {/* ส่วนสุ่มคำอวยพรและ QR Code */}
           <div style={{ marginBottom: '15px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
@@ -182,7 +182,7 @@ export default function ReceiptModal({ receiptData, onClose, onPrint }) {
                />
              )}
              {randomBlessing && (
-               <div style={{ fontSize: '12px', fontWeight: 'bold', fontStyle: 'italic', color: '#1A202C', marginTop: '4px' }}>
+               <div style={{ fontSize: '12px', fontStyle: 'italic', color: '#1A202C', marginTop: '4px' }}>
                  ✨ {randomBlessing} ✨
                </div>
              )}
