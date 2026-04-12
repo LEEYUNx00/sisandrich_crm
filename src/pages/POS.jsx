@@ -37,7 +37,7 @@ export default function POS() {
   // Quick Add Product
   const [showQuickAdd, setShowQuickAdd] = useState(false);
   const [quickAddBarcode, setQuickAddBarcode] = useState('');
-  const [quickAddForm, setQuickAddForm] = useState({ name: '', price: '', category: 'General', stock: 1 });
+  const [quickAddForm, setQuickAddForm] = useState({ name: '', sku: '', price: '', category: 'General', stock: 1 });
 
   const [detailProduct, setDetailProduct] = useState(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
@@ -62,6 +62,7 @@ export default function POS() {
   const [inputBuffer, setInputBuffer] = useState('');
   const [tempCustomerId, setTempCustomerId] = useState(null);
   const [noteCounts, setNoteCounts] = useState({ 1: 0, 2: 0, 5: 0, 10: 0, 20: 0, 50: 0, 100: 0, 500: 0, 1000: 0 });
+  const [lastSearchAttempt, setLastSearchAttempt] = useState('');
 
   // Firestore Data States
   const [products, setProducts] = useState([]);
@@ -194,20 +195,30 @@ export default function POS() {
     if (matchedProduct) {
       addToCart(matchedProduct);
       setSearchTerm(''); // เคลียร์ช่องค้นหาเพื่อรอสแกนชิ้นต่อไป
+      setLastSearchAttempt('');
       // เล็งโฟกัสกลับไปที่ช่องเดิม
       setTimeout(() => searchInputRef.current?.focus(), 100);
     } else {
-      // 📝 ยิงไม่พบ -> เปิด Modal เพิ่มสินค้าด่วน
+      // 📝 ยิงไม่พบ -> เช็คว่ากดครั้งที่ 2 หรือยัง?
       const unknownBarcode = searchTerm.trim();
-      setQuickAddBarcode(unknownBarcode);
-      setQuickAddForm({
-        name: `สินค้าใหม่ [${unknownBarcode}]`,
-        price: '',
-        category: 'General',
-        stock: 1
-      });
-      setShowQuickAdd(true);
-      setSearchTerm('');
+      
+      if (lastSearchAttempt === unknownBarcode) {
+        setQuickAddBarcode(unknownBarcode);
+        setQuickAddForm({
+          name: `สินค้า${unknownBarcode}`,
+          sku: unknownBarcode,
+          price: '',
+          category: 'General',
+          stock: 1
+        });
+        setShowQuickAdd(true);
+        setSearchTerm('');
+        setLastSearchAttempt('');
+      } else {
+        // ครั้งแรก: ให้จำไว้ และไม่ทำอะไร (อาจจะใส่ Alert เล็กๆ ได้)
+        setLastSearchAttempt(unknownBarcode);
+        // คุณอาจจะเพิ่ม UI แจ้งเตือนตรงนี้ได้
+      }
     }
   };
 
@@ -218,7 +229,7 @@ export default function POS() {
     try {
       const newProductData = {
         name: quickAddForm.name,
-        sku: `AUTO-${Date.now().toString().slice(-6)}`,
+        sku: quickAddForm.sku || quickAddBarcode || `AUTO-${Date.now().toString().slice(-6)}`,
         barcode: quickAddBarcode,
         category: quickAddForm.category,
         price: Number(quickAddForm.price),
@@ -848,8 +859,8 @@ export default function POS() {
               </div>
             </div>
 
-          <div className="card" style={{ marginBottom: '12px', padding: '12px 16px', display: 'flex', gap: '12px', alignItems: 'center' }}>
-            <form onSubmit={handleBarcodeSubmit} style={{ flex: 1, margin: 0 }}>
+          <div className="card" style={{ marginBottom: '12px', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <form onSubmit={handleBarcodeSubmit} style={{ width: '100%', margin: 0 }}>
               <div className="input-group" style={{ marginBottom: 0 }}>
                 <div className="input-icon-wrapper">
                   <Search className="icon" size={18} />
@@ -859,11 +870,15 @@ export default function POS() {
                     className="input" 
                     placeholder="สแกนรหัส หรือ ค้นชื่อสินค้า/SKU..." 
                     value={searchTerm}
-                    style={{ height: '40px' }}
+                    style={{ 
+                      height: '40px',
+                      borderColor: lastSearchAttempt && searchTerm === lastSearchAttempt ? '#E53E3E' : ''
+                    }}
                     onChange={(e) => { 
                       const val = e.target.value;
                       setSearchTerm(val); 
                       if (val) setLimitCount(32); 
+                      if (val !== lastSearchAttempt) setLastSearchAttempt('');
                     }}
                     autoFocus
                     autoComplete="off"
@@ -871,6 +886,11 @@ export default function POS() {
                 </div>
               </div>
             </form>
+            {lastSearchAttempt && searchTerm === lastSearchAttempt && (
+               <div style={{ fontSize: '11px', color: '#E53E3E', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px', animation: 'fadeIn 0.2s' }}>
+                  <Plus size={14} /> ไม่พบรหัส "{lastSearchAttempt}" ในระบบ กด Enter อีกครั้งเพื่อเพิ่มสินค้าด่วน
+               </div>
+            )}
           </div>
 
           <div className="pos-products" style={{ 

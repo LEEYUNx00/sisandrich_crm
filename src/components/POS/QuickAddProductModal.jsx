@@ -26,15 +26,28 @@ export default function QuickAddProductModal({ isOpen, onClose, barcode, form, s
 
         {/* Body */}
         <form onSubmit={onSubmit} style={{ padding: '24px' }}>
-          <div style={{ marginBottom: '20px' }}>
-            <label style={{ display: 'block', fontSize: '13px', fontWeight: 'bold', color: '#4A5568', marginBottom: '8px' }}>บาร์โค้ด (Barcode)</label>
-            <input 
-              type="text" 
-              className="input" 
-              value={barcode} 
-              readOnly 
-              style={{ background: '#F7FAFC', color: '#718096', fontWeight: 'bold', border: '1px solid #E2E8F0' }} 
-            />
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '20px' }}>
+            <div>
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: 'bold', color: '#4A5568', marginBottom: '8px' }}>บาร์โค้ด (Barcode)</label>
+              <input 
+                type="text" 
+                className="input" 
+                value={barcode} 
+                readOnly 
+                style={{ background: '#F7FAFC', color: '#718096', fontWeight: 'bold', border: '1px solid #E2E8F0', cursor: 'not-allowed' }} 
+              />
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: 'bold', color: '#4A5568', marginBottom: '8px' }}>รหัสสินค้า (SKU)</label>
+              <input 
+                type="text" 
+                className="input" 
+                value={form.sku} 
+                onChange={e => setForm({ ...form, sku: e.target.value })}
+                placeholder="ระบุรหัสสินค้า..."
+                style={{ border: '1px solid #3182CE' }} 
+              />
+            </div>
           </div>
 
           <div style={{ marginBottom: '20px' }}>
