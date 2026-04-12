@@ -71,44 +71,82 @@ export default function Settings() {
   };
 
 
-  const handleSystemReset = async () => {
-    const confirmation = window.confirm("⚠️ คำเตือน: คุณแน่ใจหรือไม่ที่จะรีเซ็ตระบบ?\n\nการกระทำนี้จะลบทิ้งถาวร:\n1. ประวัติการขายทั้งหมด (Sales History)\n2. ประวัติการใช้งานระบบ (System Logs)\n3. ประวัติการปรับสต็อก (Inventory Logs)\n4. รีเซ็ตยอดซื้อและคะแนนของลูกค้าทุกคนเป็น 0\n\n** ไม่สามารถย้อนกลับได้ **");
-    
+  const [maintenanceTargets, setMaintenanceTargets] = useState({
+    sales: false,
+    voided_sales: false, // New: Clear only voided bills
+    inv_logs: false,
+    shifts: false,
+    sys_logs: false,
+    crm_reset: false
+  });
+  const [confirmText, setConfirmText] = useState('');
+
+  const handleGranularReset = async () => {
+    // Double check with standard alert too
+    const confirmation = window.confirm("⚠️ ยืนยันขั้นตอนสุดท้าย: คุณเตรียมใจลบข้อมูลที่เลือกแล้วใช่ไหม? (ไม่สามารถกู้คืนได้)");
     if (!confirmation) return;
 
     setLoading(true);
     try {
-       const batch = writeBatch(db);
+      const batch = writeBatch(db);
+      let count = 0;
 
-       // 1. Delete Sales
-       const salesSnap = await getDocs(collection(db, 'sales'));
-       salesSnap.forEach(d => batch.delete(d.ref));
+      // 1. Delete ALL Sales History
+      if (maintenanceTargets.sales) {
+        const snap = await getDocs(collection(db, 'sales'));
+        snap.forEach(d => { batch.delete(d.ref); count++; });
+      } 
+      // 1.1 Delete ONLY Voided Sales (if not already deleting all)
+      else if (maintenanceTargets.voided_sales) {
+        const snap = await getDocs(collection(db, 'sales'));
+        snap.forEach(d => {
+          if (d.data().status === 'voided') {
+            batch.delete(d.ref); 
+            count++;
+          }
+        });
+      }
 
-       // 2. Delete System Logs
-       const logsSnap = await getDocs(collection(db, 'system_logs'));
-       logsSnap.forEach(d => batch.delete(d.ref));
+      // 2. Delete Inventory Logs
+      if (maintenanceTargets.inv_logs) {
+        const snap = await getDocs(collection(db, 'inventory_logs'));
+        snap.forEach(d => { batch.delete(d.ref); count++; });
+      }
 
-       // 3. Delete Inventory Logs
-       const invLogsSnap = await getDocs(collection(db, 'inventory_logs'));
-       invLogsSnap.forEach(d => batch.delete(d.ref));
+      // 3. Delete Shift Records
+      if (maintenanceTargets.shifts) {
+        const snap = await getDocs(collection(db, 'shifts'));
+        snap.forEach(d => { batch.delete(d.ref); count++; });
+      }
 
-       // 4. Update Customers
-       const custSnap = await getDocs(collection(db, 'customers'));
-       custSnap.forEach(d => {
-         batch.update(d.ref, {
-           totalSpend: 0,
-           points: 0,
-           totalVisit: 0
-         });
-       });
+      // 4. Delete System Logs
+      if (maintenanceTargets.sys_logs) {
+        const snap = await getDocs(collection(db, 'system_logs'));
+        snap.forEach(d => { batch.delete(d.ref); count++; });
+      }
 
-       await batch.commit();
-       alert("🎉 รีเซ็ตระบบสำเร็จ! ประวัติทั้งหมดถูกล้างเรียบร้อยแล้ว");
-       window.location.reload();
+      // 5. CRM Reset (Points/Spend)
+      if (maintenanceTargets.crm_reset) {
+        const snap = await getDocs(collection(db, 'customers'));
+        snap.forEach(d => {
+          batch.update(d.ref, { totalSpend: 0, points: 0, totalVisit: 0 });
+          count++;
+        });
+      }
+
+      if (count === 0) {
+        alert("ℹ️ ไม่มีการเลือกหมวดหมู่ที่ต้องการลบ");
+        setLoading(false);
+        return;
+      }
+
+      await batch.commit();
+      alert(`🎉 ดำเนินการล้างข้อมูลเรียบร้อย! (ลบทั้งหมด ${count} รายการ)`);
+      window.location.reload();
     } catch (err) {
-       alert("เกิดข้อผิดพลาดในการรีเซ็ต: " + err.message);
+      alert("เกิดข้อผิดพลาดในการบำรุงรักษา: " + err.message);
     } finally {
-       setLoading(false);
+      setLoading(false);
     }
   };
 
@@ -226,33 +264,113 @@ export default function Settings() {
         )}
 
 
-        {/* MAINTENANCE & RESET */}
+        {/* MAINTENANCE & RESET - Granular Control */}
         {activeTab === 'maintenance' && (
           <div className="card animate-slide-in" style={{ padding: '24px', backgroundColor: '#fff' }}>
-            <h3 style={{ fontSize: '20px', fontWeight: 'bold', marginBottom: '20px', color: '#C53030', display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <AlertTriangle size={24} /> พื้นที่บำรุงรักษาระบบ (Maintenance Zone)
-            </h3>
-            
-            <div style={{ padding: '20px', backgroundColor: '#FFF5F5', border: '1px solid #FED7D7', borderRadius: '12px', marginBottom: '24px' }}>
-              <h4 style={{ color: '#C53030', marginBottom: '8px', fontSize: '15px', fontWeight: 'bold' }}>ล้างข้อมูลทั้งหมดในระบบ (Emergency System Reset)</h4>
-              <p style={{ fontSize: '13px', color: '#742A2A', marginBottom: '16px', lineHeight: '1.6' }}>
-                ฟังก์ชันนี้จะทำความสะอาดฐานข้อมูลให้เหมือนใหม่ โดยจะลบ **ประวัติการขาย, บิล, ข้อมูลสต็อกย้อนหลัง และพอยต์ลูกค้า** 
-                <br/>*ข้อมูลไอเทมสินค้า (Inventory Products) และรายชื่อลูกค้าจะยังอยู่ แต่ยอดขายสะสมจะกลายเป็น 0*
-              </p>
-              
-              <button 
-                className="btn" 
-                style={{ background: '#E53E3E', color: 'white', padding: '12px 24px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px' }}
-                onClick={handleSystemReset}
-                disabled={loading}
-              >
-                <Trash2 size={18} /> {loading ? 'กำลังรีเซ็ต...' : 'เริ่มกระบวนการรีเซ็ตระบบตอนนี้'}
-              </button>
+            <div style={{ borderBottom: '2px solid #FEE2E2', paddingBottom: '16px', marginBottom: '24px' }}>
+              <h3 style={{ fontSize: '22px', fontWeight: '900', color: '#B91C1C', display: 'flex', alignItems: 'center', gap: '12px', margin: 0 }}>
+                <AlertTriangle size={28} /> พื้นที่บำรุงรักษาระบบ (Maintenance Zone)
+              </h3>
+              <p style={{ margin: '8px 0 0 40px', fontSize: '14px', color: '#64748B' }}>จัดการฐานข้อมูลและล้างข้อมูลเก่าเพื่อเพิ่มประสิทธิภาพระบบ</p>
             </div>
+            
+            <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '32px' }}>
+              {/* Step 1: Select Categories */}
+              <div>
+                <h4 style={{ fontSize: '16px', fontWeight: '800', color: '#1E293B', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Filter size={18} /> 1. เลือกหมวดหลักที่ต้องการลบ
+                </h4>
+                
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  {[
+                    { id: 'sales', label: 'ประวัติการขาย "ทั้งหมด" (All Sales)', desc: 'ลบรายการขายทั้งหมดทุกสถานะทิ้งถาวร', color: '#EF4444' },
+                    { id: 'voided_sales', label: 'ลบเฉพาะ "บิลที่ยกเลิกแล้ว" (Voided Only)', desc: 'ล้างบิลที่เป็นสีแดง (ยกเลิก) ทิ้งเท่านั้น บิลสำเร็จยังอยู่', color: '#B91C1C' },
+                    { id: 'inv_logs', label: 'ประวัติการปรับสต็อก (Inventory Logs)', desc: 'ล้างบันทึกการเพิ่ม/ลดสต็อกย้อนหลัง', color: '#F59E0B' },
+                    { id: 'shifts', label: 'ประวัติการเข้ากะ (Shift Records)', desc: 'ล้างข้อมูลบันทึกเวลาเปิด-ปิดกะพนักงาน', color: '#10B981' },
+                    { id: 'sys_logs', label: 'บันทึกกิจกรรมระบบ (System Logs)', desc: 'ล้าง LOG การใช้งานทั่วไปของพนักงาน', color: '#3B82F6' },
+                    { id: 'crm_reset', label: 'รีเซ็ตคะแนนสมาชิก (Customer Points)', desc: 'ล้างพอยต์และยอดซื้อสะสมลูกค้าทุกคนเป็น 0', color: '#8B5CF6' }
+                  ].map(cat => (
+                    <label key={cat.id} style={{ 
+                      display: 'flex', 
+                      padding: '14px', 
+                      borderRadius: '16px', 
+                      border: '1px solid #E2E8F0', 
+                      cursor: 'pointer', 
+                      transition: 'all 0.2s', 
+                      background: maintenanceTargets[cat.id] ? '#FEF2F2' : 'white', 
+                      borderColor: maintenanceTargets[cat.id] ? '#FECACA' : '#E2E8F0',
+                      // If 'sales' is selected, disable 'voided_sales' visually as it's redundant
+                      opacity: (cat.id === 'voided_sales' && maintenanceTargets.sales) ? 0.5 : 1
+                    }}>
+                      <input 
+                        type="checkbox" 
+                        checked={maintenanceTargets[cat.id] || false}
+                        disabled={cat.id === 'voided_sales' && maintenanceTargets.sales}
+                        onChange={(e) => setMaintenanceTargets({...maintenanceTargets, [cat.id]: e.target.checked})}
+                        style={{ width: '20px', height: '20px', marginTop: '2px', cursor: 'pointer' }}
+                      />
+                      <div style={{ marginLeft: '14px' }}>
+                        <div style={{ fontSize: '14px', fontWeight: 'bold', color: maintenanceTargets[cat.id] ? cat.color : '#1E293B' }}>{cat.label}</div>
+                        <div style={{ fontSize: '12px', color: '#64748B' }}>{cat.desc}</div>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              </div>
 
-            <div style={{ padding: '20px', backgroundColor: '#F7FAFC', border: '1px solid #E2E8F0', borderRadius: '12px' }}>
-              <h4 style={{ color: '#2D3748', marginBottom: '8px', fontSize: '15px', fontWeight: 'bold' }}>การสำรองข้อมูล (Data Backup)</h4>
-              <p style={{ fontSize: '13px', color: '#4A5568', marginBottom: '16px' }}>ระบบฐานข้อมูลของคุณทำงานบน Cloud แบบ Real-time และมีการสำรองข้อมูลอัตโนมัติโดย Firebase</p>
+              {/* Step 2: Confirm & Action */}
+              <div style={{ background: '#F8FAFC', borderRadius: '24px', padding: '24px', border: '1px solid #E2E8F0' }}>
+                <h4 style={{ fontSize: '16px', fontWeight: '800', color: '#1E293B', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Shield size={18} /> 2. ยืนยันความปลอดภัย
+                </h4>
+
+                <div style={{ background: '#FFF1F2', border: '1px solid #FFE4E6', borderRadius: '16px', padding: '16px', marginBottom: '20px' }}>
+                  <p style={{ fontSize: '13px', color: '#9F1239', fontWeight: 'bold', margin: '0 0 8px 0' }}>⚠️ คำเตือน: ข้อมูลที่ลบจะไม่สามารถกู้คืนได้</p>
+                  <p style={{ fontSize: '12px', color: '#BE123C', margin: 0 }}>กรุณาตรวจสอบหมวดที่เลือกให้มั่นใจก่อนยืนยันการลบ</p>
+                </div>
+
+                <div style={{ marginBottom: '20px' }}>
+                  <label style={{ display: 'block', fontSize: '13px', fontWeight: 'bold', color: '#475569', marginBottom: '8px' }}>
+                    พิมพ์ข้อความ <span style={{ color: '#E11D48', textDecoration: 'underline' }}>PERMANENT DELETE</span> เพื่อยืนยัน
+                  </label>
+                  <input 
+                    type="text" 
+                    className="input" 
+                    placeholder="พิมพ์ที่นี่..."
+                    value={confirmText}
+                    onChange={(e) => setConfirmText(e.target.value)}
+                    style={{ background: 'white', fontSize: '16px', fontWeight: 'bold', border: '2px solid #E2E8F0', letterSpacing: '1px' }}
+                  />
+                </div>
+
+                <button 
+                  className="btn" 
+                  disabled={confirmText !== 'PERMANENT DELETE' || Object.values(maintenanceTargets).every(v => !v) || loading}
+                  onClick={handleGranularReset}
+                  style={{ 
+                    width: '100%', 
+                    padding: '16px', 
+                    borderRadius: '16px', 
+                    background: (confirmText === 'PERMANENT DELETE' && !Object.values(maintenanceTargets).every(v => !v)) ? '#E11D48' : '#CBD5E1',
+                    color: 'white',
+                    fontWeight: '900',
+                    fontSize: '16px',
+                    border: 'none',
+                    cursor: (confirmText === 'PERMANENT DELETE' && !Object.values(maintenanceTargets).every(v => !v)) ? 'pointer' : 'not-allowed',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '10px',
+                    boxShadow: (confirmText === 'PERMANENT DELETE' && !Object.values(maintenanceTargets).every(v => !v)) ? '0 10px 15px -3px rgba(225, 29, 72, 0.4)' : 'none'
+                  }}
+                >
+                  <Trash2 size={20} /> {loading ? 'กำลังดำเนินการ...' : 'ยืนยันลบข้อมูลที่เลือก'}
+                </button>
+
+                <p style={{ fontSize: '11px', color: '#94A3B8', textAlign: 'center', marginTop: '16px' }}>
+                  ระบบจะทำการลบข้อมูลแบบ Batch และบันทึกลงใน System Log อัตโนมัติ
+                </p>
+              </div>
             </div>
           </div>
         )}

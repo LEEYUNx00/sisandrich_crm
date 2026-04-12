@@ -258,10 +258,11 @@ export default function Inventory() {
 
           let diffs = [];
           for (const row of rows) {
-              const sku = getValue(row, 'SKU', 'รหัสสินค้า', 'รหัส (SKU)', '商品编码', '产品编号');
-              if (!sku || String(sku).trim() === "") continue;
+              const rawSku = getValue(row, 'SKU', 'รหัสสินค้า', 'รหัส (SKU)', '商品编码', '产品编号');
+              if (!rawSku || String(rawSku).trim() === "") continue;
+              const sku = String(rawSku).trim();
 
-              const existing = products.find(p => p.sku?.trim().toLowerCase() === String(sku).trim().toLowerCase());
+              const existing = products.find(p => p.sku?.trim().toLowerCase() === sku.toLowerCase());
 
               const stockVal = Number(getValue(row, 'Stock Branch', 'Stock', 'สต็อก', '庫存', '库存', 'Stock Branch 1', 'Stock Branch 3')) || 0;
               
@@ -271,40 +272,59 @@ export default function Inventory() {
               const fallback1st = Number(getValue(row, 'Stock Branch 1', 'หน้าร้าน (สาขา 1)', 'สต็อกหน้าร้าน (ชั้น 1)', '1楼库存')) || 0;
               const fallback3rd = Number(getValue(row, 'Stock Branch 3', 'คลังเก็บ (ชั้น 3)', 'สต็อกเก็บของ (ชั้น 3)', '3楼库存')) || 0;
 
+              // --- 1. Get raw values from Row ---
+              const rowName = getValue(row, 'Product Name', 'ชื่อสินค้า', 'Name', '商品名称');
+              const rowBarcode = getValue(row, 'Barcode', 'บาร์โค้ด', '条码');
+              const rowCategory = getValue(row, 'Category', 'หมวดหมู่', '分类', '类别');
+              const rowSubCategory = getValue(row, 'Sub-Category', 'หมวดหมู่ย่อย', '子类别');
+              const rowCost = getValue(row, 'Cost', 'ต้นทุน', 'ต้นทุน (Cost)', 'ต้นทุน(Cost)', '成本');
+              const rowPrice = getValue(row, 'Price', 'ราคา', 'ราคาขาย', '价格');
+              const rowStockMode = getValue(row, 'Stock Mode', 'โหมดสต็อก', '库存模式');
+              const rowImage = getValue(row, 'Image URL', 'รูปภาพ', 'รูปภาพสินค้า', '图片');
+              const rowShelf1st = getValue(row, 'Shelf Floor 1', 'ชั้นวาง-ชั่น1', '1楼货架');
+              const rowShelf3rd = getValue(row, 'Shelf Floor 3', 'ชั้นวาง-ชั้น3', '3楼货架');
+              const rowRemark = getValue(row, 'Remark', 'หมายเหตุ', '备注');
+
+              // --- 2. Initialize productData (Prefer Existing > Row > Default) ---
               const productData = {
-                sku: String(sku).trim(),
-                barcode: String(getValue(row, 'Barcode', 'บาร์โค้ด', '条码') || '').trim(),
-                name: String(getValue(row, 'Product Name', 'ชื่อสินค้า', 'Name', '商品名称') || 'สินค้าใหม่').trim(),
-                category: String(getValue(row, 'Category', 'หมวดหมู่', '分类', '类别') || 'เครื่องประดับ').trim(),
-                subCategory: String(getValue(row, 'Sub-Category', 'หมวดหมู่ย่อย', '子类别') || '').trim(),
-                cost: Number(getValue(row, 'Cost', 'ต้นทุน', 'ต้นทุน (Cost)', 'ต้นทุน(Cost)', '成本')) || 0,
-                price: Number(getValue(row, 'Price', 'ราคา', 'ราคาขาย', '价格')) || 0,
-                stockMode: getValue(row, 'Stock Mode', 'โหมดสต็อก', '库存模式') || 'Stock Control [Overselling]',
-                image: String(getValue(row, 'Image URL', 'รูปภาพ', 'รูปภาพสินค้า', '图片') || '').trim(),
-                shelf1st: String(getValue(row, 'Shelf Floor 1', 'ชั้นวาง-ชั่น1', '1楼货架') || '').trim(),
-                shelf3rd: String(getValue(row, 'Shelf Floor 3', 'ชั้นวาง-ชั้น3', '3楼货架') || '').trim(),
-                remark: String(getValue(row, 'Remark', 'หมายเหตุ', '备注') || '').trim(),
+                sku: sku,
+                barcode: (rowBarcode !== null && String(rowBarcode).trim() !== "") ? String(rowBarcode).trim() : (existing?.barcode || ''),
+                name: (rowName !== null && String(rowName).trim() !== "") ? String(rowName).trim() : (existing?.name || 'สินค้าใหม่'),
+                category: (rowCategory !== null && String(rowCategory).trim() !== "") ? String(rowCategory).trim() : (existing?.category || 'เครื่องประดับ'),
+                subCategory: (rowSubCategory !== null && String(rowSubCategory).trim() !== "") ? String(rowSubCategory).trim() : (existing?.subCategory || ''),
+                cost: (rowCost !== null && !isNaN(Number(rowCost))) ? Number(rowCost) : (existing?.cost || 0),
+                price: (rowPrice !== null && !isNaN(Number(rowPrice))) ? Number(rowPrice) : (existing?.price || 0),
+                stockMode: (rowStockMode !== null) ? String(rowStockMode) : (existing?.stockMode || 'Stock Control [Overselling]'),
+                image: (rowImage !== null && String(rowImage).trim() !== "") ? String(rowImage).trim() : (existing?.image || ''),
+                shelf1st: (rowShelf1st !== null && String(rowShelf1st).trim() !== "") ? String(rowShelf1st).trim() : (existing?.shelf1st || existing?.shelf || ''),
+                shelf3rd: (rowShelf3rd !== null && String(rowShelf3rd).trim() !== "") ? String(rowShelf3rd).trim() : (existing?.shelf3rd || ''),
+                remark: (rowRemark !== null && String(rowRemark).trim() !== "") ? String(rowRemark).trim() : (existing?.remark || ''),
                 updatedAt: serverTimestamp()
               };
 
-              const generalShelf = String(getValue(row, 'Shelf', 'Shelf/Rack', 'เลขแทร็ก', 'ชั้นวาง', '货架', '货位') || '').trim();
-              if (locId === '1st' && generalShelf) productData.shelf1st = generalShelf;
-              if (locId === '3rd' && generalShelf) productData.shelf3rd = generalShelf;
+              // --- 3. Handle Special Floor Import (locId Logic) ---
+              const generalShelf = getValue(row, 'Shelf', 'Shelf/Rack', 'เลขแทร็ก', 'ชั้นวาง', '货架', '货位');
+              if (generalShelf !== null && String(generalShelf).trim() !== "") {
+                const shelfVal = String(generalShelf).trim();
+                if (locId === '1st') productData.shelf1st = shelfVal;
+                if (locId === '3rd') productData.shelf3rd = shelfVal;
+              }
               
-              if (!productData.shelf1st && existing?.shelf1st) productData.shelf1st = existing.shelf1st;
-              if (!productData.shelf3rd && existing?.shelf3rd) productData.shelf3rd = existing.shelf3rd;
-              if (!productData.shelf1st && !productData.shelf3rd && existing?.shelf) productData.shelf1st = existing.shelf; // Migration fallback
-
+              // Ensure we don't zero out the OTHER floor's stock if we are doing a floor-specific import
               if (has1stRef) {
                 productData.stock1st = Number(getValue(row, locations['1st'].ref)) || 0;
               } else {
-                productData.stock1st = locId === '1st' ? stockVal : (!locId && fallback1st ? fallback1st : (existing?.stock1st || 0));
+                // If importing for 1st floor, use the stock value from file. Otherwise keep existing.
+                productData.stock1st = locId === '1st' ? stockVal : (existing?.stock1st || 0);
+                // Fallback for general import (no locId)
+                if (!locId && fallback1st) productData.stock1st = fallback1st;
               }
 
               if (has3rdRef) {
                 productData.stock3rd = Number(getValue(row, locations['3rd'].ref)) || 0;
               } else {
-                productData.stock3rd = locId === '3rd' ? stockVal : (!locId && fallback3rd ? fallback3rd : (existing?.stock3rd || 0));
+                productData.stock3rd = locId === '3rd' ? stockVal : (existing?.stock3rd || 0);
+                if (!locId && fallback3rd) productData.stock3rd = fallback3rd;
               }
 
               if (existing) {

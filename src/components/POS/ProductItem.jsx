@@ -10,63 +10,96 @@ export default function ProductItem({ product, onAddToCart, quantityInCart = 0 }
         padding: 0, 
         overflow: 'hidden', 
         opacity: isOut ? 0.6 : 1,
-        transition: 'all 0.15s ease',
+        transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
         background: '#fff',
-        border: '1px solid #edf2f7',
-        borderRadius: '10px',
+        border: '2px solid #f1f5f9',
+        borderRadius: '16px',
         width: '100%',
+        display: 'flex',
+        flexDirection: 'column',
         position: 'relative'
       }} 
-      className="product-card-hover"
+      className="product-card-premium"
       onClick={() => !isOut && onAddToCart(product)}
     >
       <style>{`
-        .product-card-hover:hover {
-          transform: translateY(-4px);
-          box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-          border-color: #3182CE !important;
+        .product-card-premium:hover {
+          transform: translateY(-5px);
+          box-shadow: 0 12px 20px -5px rgba(0,0,0,0.1);
+          border-color: #ef4444 !important;
         }
       `}</style>
 
-      {/* Media Section: Image + Overlays */}
-      <div style={{ position: 'relative', width: '100%', paddingTop: '100%', background: '#F7FAFC' }}>
+      {/* Media Section: Strictly Locked 1:1 Ratio */}
+      <div style={{ 
+        position: 'relative', 
+        width: '100%',
+        aspectRatio: '1 / 1', 
+        background: '#f8fafc', 
+        overflow: 'hidden',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        flexShrink: 0 // Prevent shrinking in some flex/grid layouts
+      }}>
         {product.image ? (
-          <img src={product.image} alt={product.name} style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
+          <img 
+            src={product.image} 
+            alt={product.name} 
+            style={{ 
+              width: '100%', 
+              height: '100%', 
+              objectFit: 'cover',
+              display: 'block'
+            }} 
+          />
         ) : (
-          <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#CBD5E0', fontSize: '9px', fontWeight: 'bold', textAlign: 'center' }}>
-            N/A
+          <div style={{ 
+            width: '100%', 
+            height: '100%', 
+            display: 'flex', 
+            flexDirection: 'column',
+            alignItems: 'center', 
+            justifyContent: 'center', 
+            color: '#cbd5e1', 
+            padding: '10px',
+            textAlign: 'center'
+          }}>
+            <div style={{ fontSize: '10px', fontWeight: 'bold', marginBottom: '4px', opacity: 0.6 }}>NO IMAGE</div>
+            <div style={{ fontSize: '11px', fontWeight: 'bold' }}>{product.sku}</div>
           </div>
         )}
 
-        {/* Stock Badge */}
+        {/* Stock Badge - Premium Style */}
         {product.stockMode !== 'No Stock' && (
           <div style={{ 
-            position: 'absolute', top: '4px', right: '4px', 
-            background: isOut ? '#E53E3E' : 'rgba(255,255,255,0.95)', 
-            color: isOut ? 'white' : '#2D3748', 
-            padding: '1px 5px', borderRadius: '4px', fontSize: '10px', fontWeight: '900',
-            boxShadow: '0 2px 4px rgba(0,0,0,0.1)', border: isOut ? 'none' : '1px solid #E2E8F0'
+            position: 'absolute', top: '8px', right: '8px', 
+            background: isOut ? '#ef4444' : 'rgba(255,255,255,0.9)', 
+            color: isOut ? 'white' : '#1e293b', 
+            padding: '2px 8px', borderRadius: '8px', fontSize: '11px', fontWeight: '900',
+            boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)', backdropFilter: 'blur(4px)'
           }}>
             {isOut ? 'หมด' : stock}
           </div>
         )}
 
-        {/* Price Overlay */}
+        {/* Price Label - Red Premium */}
         <div style={{ 
-          position: 'absolute', bottom: '4px', right: '4px', 
-          background: 'rgba(0,0,0,0.7)', color: 'white', 
-          padding: '2px 6px', borderRadius: '4px', fontSize: '11px', fontWeight: '900' 
+          position: 'absolute', bottom: '8px', left: '8px', 
+          background: '#ef4444', color: 'white', 
+          padding: '4px 10px', borderRadius: '10px', fontSize: '13px', fontWeight: '900',
+          boxShadow: '0 4px 10px rgba(239, 68, 68, 0.4)'
         }}>
-          ฿{product.price}
+          ฿{(Number(product.price) || 0).toLocaleString()}
         </div>
       </div>
 
-      {/* Info Section */}
-      <div style={{ padding: '6px 8px', textAlign: 'center' }}>
-        <div style={{ fontWeight: 'bold', fontSize: '11px', color: '#2D3748', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+      {/* Info Section - Guaranteed Height */}
+      <div style={{ padding: '10px 8px', background: 'white', flexShrink: 0, borderTop: '1px solid #f1f5f9' }}>
+        <div style={{ fontWeight: '800', fontSize: '12px', color: '#1e293b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginBottom: '2px' }}>
           {product.name}
         </div>
-        <div style={{ fontSize: '9px', color: '#718096', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+        <div style={{ fontSize: '10px', color: '#64748b', fontWeight: '600', letterSpacing: '0.05em' }}>
           {product.sku}
         </div>
       </div>

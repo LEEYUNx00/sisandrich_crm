@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { db } from '../firebase';
-import { collection, onSnapshot, query, orderBy, limit, doc, updateDoc, increment, addDoc, serverTimestamp, getDoc } from 'firebase/firestore';
-import { History, Search, Download, XCircle, Printer, CheckCircle, AlertCircle, X, FileText } from 'lucide-react';
+import { collection, onSnapshot, query, orderBy, limit, doc, updateDoc, increment, addDoc, serverTimestamp, getDoc, where } from 'firebase/firestore';
+import { History, Search, Download, XCircle, Printer, CheckCircle, AlertCircle, X, FileText, RefreshCw } from 'lucide-react';
 import ReceiptModal from '../components/POS/ReceiptModal';
 import html2canvas from 'html2canvas';
 
@@ -13,6 +13,12 @@ export default function SalesHistory() {
   
   const [selectedReceipt, setSelectedReceipt] = useState(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [activeShift, setActiveShift] = useState(null);
+  const [isLinking, setIsLinking] = useState(null); 
+
+  // Pagination State
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 30;
 
   useEffect(() => {
     const q = query(collection(db, 'sales'), orderBy('timestamp', 'desc'), limit(100));
@@ -27,6 +33,34 @@ export default function SalesHistory() {
     });
     return () => unsubscribe();
   }, []);
+
+  // Fetch active shift to allow quick reconciliation
+  useEffect(() => {
+    const q = query(collection(db, 'shifts'), where('status', '==', 'open'));
+    const unsub = onSnapshot(q, (snap) => {
+      if (!snap.empty) {
+        setActiveShift({ id: snap.docs[0].id, ...snap.docs[0].data() });
+      } else {
+        setActiveShift(null);
+      }
+    });
+    return () => unsub();
+  }, []);
+
+  const handleLinkToShift = async (saleId) => {
+    if (!activeShift) return alert("กรุณาเปิดกะก่อนนำยอดเข้า");
+    setIsLinking(saleId);
+    try {
+      await updateDoc(doc(db, 'sales', saleId), {
+        shiftId: activeShift.id
+      });
+      // Not using alert here to keep it smooth, visual state will update automatically
+    } catch (err) {
+      alert("เกิดข้อผิดพลาด: " + err.message);
+    } finally {
+      setIsLinking(null);
+    }
+  };
 
   const handleVoid = async (sale) => {
     if (sale.status === 'voided') return alert('บิลนี้ถูกยกเลิกไปแล้ว');
@@ -131,74 +165,37 @@ export default function SalesHistory() {
   };
 
   const handlePrint = async () => {
-    if (!selectedReceipt) return;
-    
-    try {
-      // 1. ดึงการตั้งค่าหัวบิล
-      const docRef = doc(db, 'settings', 'receipt');
-      const docSnap = await getDoc(docRef);
-      const printSettings = docSnap.exists() ? docSnap.data() : { shopName: 'Sis&Rich', address: '' };
+    if (selectedReceipt) {
+      try {
+        // ให้เวลา DOM เรนเดอร์ ReceiptModal เล็กน้อย
+        await new Promise(resolve => setTimeout(resolve, 150));
+        const receiptElement = document.querySelector('.print-area');
+        if (!receiptElement) return alert("❌ ไม่พบเทมเพลตบิล");
 
-      // 2. ตั้งค่ารหัสสั่งการเครื่องพิมพ์ (ESC/POS)
-      const dHeight = "\x1B\x21\x10"; // Double height
-      const normal = "\x1B\x21\x00"; 
-      const center = "\x1B\x61\x01"; 
-      const left = "\x1B\x61\x00"; 
-      const bold = "\x1B\x45\x01"; 
-      const resetBold = "\x1B\x45\x00";
+        const canvas = await html2canvas(receiptElement, { 
+          scale: 4.0, 
+          useCORS: true, 
+          backgroundColor: '#ffffff' 
+        });
+        const imageData = canvas.toDataURL('image/png');
 
-      // 3. จัดหน้าบิลแบบ Text
-      let text = center + dHeight + bold + printSettings.shopName + "\n";
-      text += normal + bold + "RECEIPT" + resetBold + "\n";
-      text += (printSettings.address || "").replace(/\\n/g, "\n") + "\n\n";
-      
-      text += left;
-      text += `Date: ${selectedReceipt.timestamp?.toDate().toLocaleString('th-TH') || new Date().toLocaleString('th-TH')}\n`;
-      text += `Receipt No.: ${selectedReceipt.billId || selectedReceipt.id.slice(0, 8).toUpperCase()}\n`;
-      text += `Staff: ${selectedReceipt.staff || 'Admin'}\n`;
-      text += `Customer: ${selectedReceipt.customer?.name || 'General'}\n`;
-
-      text += "------------------------------------------\n";
-      text += "Items/Services           Qty.      Total\n";
-      text += "------------------------------------------\n";
-
-      selectedReceipt.items.forEach(item => {
-        const displaySKU = (item.sku || "").padEnd(25);
-        const displayQty = `${item.qty || 1}x`.padEnd(8);
-        const displayTotal = (item.subtotal || item.price).toLocaleString();
-        text += `${displaySKU}${displayQty}${displayTotal}\n`;
-      });
-
-      text += "------------------------------------------\n";
-      text += `Sub-Total: ${selectedReceipt.subTotal?.toLocaleString()}\n`;
-      text += bold + `TOTAL: ${selectedReceipt.grandTotal?.toLocaleString()}` + resetBold + "\n";
-      text += `Payment: ${selectedReceipt.paymentMethod || 'Cash'}\n`;
-      text += `Change: ${selectedReceipt.changeAmount?.toLocaleString() || 0}\n`;
-      text += "------------------------------------------\n";
-      
-      text += center + "\nThank You\n";
-      text += (printSettings.receiptFooter || "").replace(/\\n/g, "\n") + "\n\n";
-
-      // 4. ส่งไปที่ Bridge (โหมด Text ความละเอียดสูงสุด)
-      await fetch('http://127.0.0.1:8000/print-receipt-text', {
-        method: 'POST',
-        mode: 'cors',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          text: text,
-          printerName: 'XP-80C'
-        })
-      });
-
-    } catch (err) {
-      console.warn("Native print failed, falling back to browser print", err);
-      window.print();
+        await fetch('http://127.0.0.1:8000/print-receipt', {
+          method: 'POST',
+          mode: 'cors',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            printerName: 'XP-80C', 
+            image: imageData, 
+            billId: selectedReceipt.billId || selectedReceipt.id.slice(0, 8).toUpperCase()
+          })
+        });
+      } catch (err) {
+        console.error("Graphical print failed:", err);
+        window.print();
+      }
     }
   };
 
-    // Fallback to standard browser print
-    window.print();
-  };
 
   const filteredSales = sales.filter(s => {
     const term = searchTerm.toLowerCase();
@@ -217,6 +214,17 @@ export default function SalesHistory() {
     
     return searchMatch && dateMatch;
   });
+
+  // Reset to page 1 when searching or filtering
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, dateFilter]);
+
+  // Pagination Logic
+  const totalPages = Math.ceil(filteredSales.length / ITEMS_PER_PAGE);
+  const indexOfLastItem = currentPage * ITEMS_PER_PAGE;
+  const indexOfFirstItem = indexOfLastItem - ITEMS_PER_PAGE;
+  const currentSales = filteredSales.slice(indexOfFirstItem, indexOfLastItem);
 
   return (
     <div className="animate-slide-in" style={{ height: 'calc(100vh - 120px)', display: 'flex', flexDirection: 'column' }}>
@@ -297,9 +305,9 @@ export default function SalesHistory() {
           <tbody>
             {loading ? (
               <tr><td colSpan="6" style={{ textAlign: 'center', padding: '100px', color: '#A0AEC0' }}>กำลังโหลดข้อมูล...</td></tr>
-            ) : filteredSales.length === 0 ? (
+            ) : currentSales.length === 0 ? (
               <tr><td colSpan="6" style={{ textAlign: 'center', padding: '100px', color: '#A0AEC0' }}>ไม่พบประวัติการขาย</td></tr>
-            ) : filteredSales.map(sale => (
+            ) : currentSales.map(sale => (
               <tr key={sale.id} style={{ borderBottom: '1px solid #EDF2F7', opacity: sale.status === 'voided' ? 0.6 : 1 }}>
                 <td style={{ padding: '14px 16px' }}>
                   <div style={{ fontSize: '13px', fontWeight: '600', color: '#2D3748' }}>{sale.timestamp.toLocaleDateString('th-TH')}</div>
@@ -316,11 +324,40 @@ export default function SalesHistory() {
                   ฿{(sale.grandTotal || 0).toLocaleString()}
                   <div style={{ fontSize: '11px', color: '#718096', fontWeight: 'normal' }}>{sale.totalQty} items</div>
                 </td>
-                <td style={{ padding: '14px 16px' }}>
+                <td style={{ 
+                  padding: '14px 16px', 
+                  background: !sale.shiftId && sale.status !== 'voided' ? '#FFFBEB' : 'transparent',
+                  transition: 'background 0.3s'
+                }}>
                   {sale.status === 'voided' ? (
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: '#FED7D7', color: '#C53030', padding: '4px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 'bold' }}>
                       <AlertCircle size={12} /> ยกเลิกแล้ว (Voided)
                     </span>
+                  ) : !sale.shiftId ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: '#FEFCBF', color: '#B7791F', padding: '4px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 'bold' }}>
+                        <AlertCircle size={12} /> นอกกะ (No Shift)
+                      </span>
+                      {activeShift && (
+                        <button 
+                          className="btn" 
+                          onClick={() => handleLinkToShift(sale.id)}
+                          disabled={isLinking === sale.id}
+                          style={{ 
+                            fontSize: '10px', 
+                            padding: '4px 8px', 
+                            background: '#1A202C', 
+                            color: 'white',
+                            height: 'auto',
+                            width: 'fit-content'
+                          }}
+                        >
+                          {isLinking === sale.id ? '...' : (
+                            <><RefreshCw size={10} className="animate-spin" /> ลงกะ #{activeShift.shiftNumber}</>
+                          )}
+                        </button>
+                      )}
+                    </div>
                   ) : (
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: '#C6F6D5', color: '#2F855A', padding: '4px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 'bold' }}>
                       <CheckCircle size={12} /> สำเร็จ (Completed)
@@ -355,6 +392,33 @@ export default function SalesHistory() {
           </tbody>
         </table>
       </div>
+
+      {/* Pagination Controls */}
+      {totalPages > 1 && (
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '20px', padding: '20px', background: 'white', borderTop: '1px solid #EDF2F7', borderRadius: '0 0 16px 16px' }}>
+          <button 
+            className="btn btn-outline" 
+            disabled={currentPage === 1} 
+            onClick={() => setCurrentPage(prev => prev - 1)}
+            style={{ padding: '8px 16px', fontSize: '13px' }}
+          >
+            ย้อนกลับ
+          </button>
+          
+          <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#4A5568' }}>
+            หน้า {currentPage} จาก {totalPages}
+          </div>
+          
+          <button 
+            className="btn btn-outline" 
+            disabled={currentPage === totalPages} 
+            onClick={() => setCurrentPage(prev => prev + 1)}
+            style={{ padding: '8px 16px', fontSize: '13px' }}
+          >
+            ถัดไป
+          </button>
+        </div>
+      )}
 
       {/* Integrated POS Receipt Modal */}
       <ReceiptModal 

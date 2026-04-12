@@ -31,7 +31,8 @@ export default function PaymentModal({
   setSelectedSeller,
   selectedCustomer,
   setSelectedCustomer,
-  setTempCustomerId
+  setTempCustomerId,
+  handleRoundDown
 }) {
   const [customerSearch, setCustomerSearch] = useState('');
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -105,6 +106,18 @@ export default function PaymentModal({
               border-color: #3182ce !important;
               box-shadow: 0 0 0 1px #3182ce !important;
             }
+            .shake-attention {
+              animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both;
+              transform: translate3d(0, 0, 0);
+              backface-visibility: hidden;
+              perspective: 1000px;
+            }
+            @keyframes shake {
+              10%, 90% { transform: translate3d(-1px, 0, 0); }
+              20%, 80% { transform: translate3d(2px, 0, 0); }
+              30%, 50%, 70% { transform: translate3d(-4px, 0, 0); }
+              40%, 60% { transform: translate3d(4px, 0, 0); }
+            }
           `}
         </style>
 
@@ -136,8 +149,19 @@ export default function PaymentModal({
            
            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
               {/* Salesperson Selector */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#f8fafc', padding: '4px 12px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
-                <Briefcase size={16} color="#3182ce" />
+              <div style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: '8px', 
+                background: !selectedSeller ? '#fff5f5' : '#f8fafc', 
+                padding: '4px 12px', 
+                borderRadius: '12px', 
+                border: `2px solid ${!selectedSeller ? '#fc8181' : '#e2e8f0'}`,
+                boxShadow: !selectedSeller ? '0 0 10px rgba(252, 129, 129, 0.2)' : 'none'
+              }}
+              className={!selectedSeller && getPaidTotal() >= getGrandTotal() ? 'shake-attention' : ''}
+              >
+                <Briefcase size={16} color={!selectedSeller ? "#e53e3e" : "#3182ce"} />
                 <select 
                   className="selector-input"
                   style={{ 
@@ -156,7 +180,7 @@ export default function PaymentModal({
                     setSelectedSeller(emp || null);
                   }}
                 >
-                  <option value="">-- เลือกพนักงานขาย --</option>
+                  <option value="" disabled>-- เลือกพนักงานขาย (บังคับ) --</option>
                   {employees.map(emp => (
                     <option key={emp.id} value={emp.id}>{emp.name}</option>
                   ))}
@@ -516,17 +540,30 @@ export default function PaymentModal({
               {/* Summary & Action */}
               <div style={{ marginTop: '24px', borderTop: '2px solid #f1f5f9', paddingTop: '20px' }}>
                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '20px' }}>
-                    <div style={{ background: '#fef2f2', padding: '12px 16px', borderRadius: '16px', border: '1px solid #fee2e2' }}>
+                    <div style={{ background: '#fef2f2', padding: '12px 16px', borderRadius: '16px', border: '1px solid #fee2e2', position: 'relative' }}>
                        <div style={{ fontSize: '11px', color: '#ef4444', fontWeight: '800', textTransform: 'uppercase', marginBottom: '4px' }}>คงเหลือที่ต้องชำระ</div>
                        <div style={{ fontSize: '20px', fontWeight: '900', color: '#b91c1c' }}>
                           {getPaidTotal() >= getGrandTotal() ? 'ชำระล่วงครบแล้ว' : `฿ ${(getGrandTotal() - getPaidTotal()).toLocaleString()}`}
                        </div>
+                       {getGrandTotal() % 1 !== 0 && (
+                          <button 
+                            onClick={handleRoundDown}
+                            style={{ position: 'absolute', top: '8px', right: '8px', background: '#ef4444', color: 'white', border: 'none', borderRadius: '6px', fontSize: '10px', padding: '2px 6px', cursor: 'pointer', fontWeight: 'bold' }}
+                          >
+                            ปัดเศษทิ้ง
+                          </button>
+                       )}
                     </div>
                     <div style={{ background: '#f0f9ff', padding: '12px 16px', borderRadius: '16px', border: '1px solid #e0f2fe' }}>
                        <div style={{ fontSize: '11px', color: '#0ea5e9', fontWeight: '800', textTransform: 'uppercase', marginBottom: '4px' }}>เงินทอน (กรณีส่งเกิน)</div>
                        <div style={{ fontSize: '20px', fontWeight: '900', color: '#0369a1' }}>
                           {getPaidTotal() > getGrandTotal() ? `฿ ${(getPaidTotal() - getGrandTotal()).toLocaleString()}` : '฿ 0'}
                        </div>
+                       {getPaidTotal() > getGrandTotal() && (
+                          <div style={{ fontSize: '10px', color: '#0ea5e9', fontWeight: 'bold', marginTop: '2px' }}>
+                             (รับ ฿{getPaidTotal().toLocaleString()} - ยอด ฿{getGrandTotal().toLocaleString()})
+                          </div>
+                       )}
                     </div>
                  </div>
 
@@ -573,6 +610,10 @@ export default function PaymentModal({
                       }}
                       disabled={isProcessing || (getPaidTotal() < getGrandTotal())}
                       onClick={() => {
+                         if (!selectedSeller) {
+                            alert("⚠️ กรุณาเลือกพนักงานขายก่อนดำเนินการชำระเงิน!");
+                            return;
+                         }
                          onClose();
                          processCheckout(tempCustomerId);
                       }}

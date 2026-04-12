@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, ShoppingCart, Package, Users, Settings as SettingsIcon, FileText, BadgePercent, UserCheck, LogOut, Shield, History, Printer } from 'lucide-react';
+import { LayoutDashboard, ShoppingCart, Package, Users, Settings as SettingsIcon, FileText, BadgePercent, UserCheck, LogOut, Shield, History, Printer, Timer } from 'lucide-react';
 import { auth } from './firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 
@@ -16,15 +16,17 @@ import Employees from './pages/Employees';
 import PrintSettings from './pages/PrintSettings';
 import Login from './pages/Login';
 import Register from './pages/Register';
+import ShiftManagement from './pages/ShiftManagement';
 import MemberDashboard from './pages/MemberDashboard';
 import { db } from './firebase';
-import { collection, query, where, getDocs } from 'firebase/firestore';
+import { collection, query, where, getDocs, onSnapshot } from 'firebase/firestore';
 
 const Sidebar = ({ permissions }) => {
   const location = useLocation();
   const allNavItems = [
     { path: '/', label: 'Dashboard', icon: LayoutDashboard, key: 'dashboard' },
     { path: '/pos', label: 'POS System', icon: ShoppingCart, key: 'pos' },
+    { path: '/shift', label: '⏱ เปิด-ปิดกะ', icon: Timer, key: 'pos' },
     { path: '/sales-history', label: 'Sales History', icon: History, key: 'pos' },
     { path: '/inventory', label: 'Inventory', icon: Package, key: 'inventory' },
     { path: '/crm', label: 'CRM & Customers', icon: Users, key: 'crm' },
@@ -65,12 +67,13 @@ const Sidebar = ({ permissions }) => {
   );
 };
 
-const Header = () => {
+const Header = ({ activeShift }) => {
   const location = useLocation();
   const getHeaderTitle = () => {
     switch (location.pathname) {
       case '/': return 'Overview Dashboard';
       case '/pos': return 'Point of Sale (POS)';
+      case '/shift': return 'เปิด-ปิดกะ (Shift Management)';
       case '/sales-history': return 'Sales History & Void';
       case '/inventory': return 'Inventory Management';
       case '/crm': return 'Customer Relationship (CRM)';
@@ -85,8 +88,28 @@ const Header = () => {
 
   return (
     <header className="top-header">
-      <div className="header-title">
-        {getHeaderTitle()}
+      <div style={{ display: 'flex', flexDirection: 'column' }}>
+        <div className="header-title" style={{ marginBottom: activeShift ? '0' : '0' }}>
+          {getHeaderTitle()}
+        </div>
+        {activeShift && (
+          <div style={{ 
+            fontSize: '11px', 
+            color: '#3182CE', 
+            display: 'flex', 
+            alignItems: 'center', 
+            gap: '6px', 
+            marginTop: '2px',
+            fontWeight: '600',
+            background: '#EBF8FF',
+            padding: '2px 8px',
+            borderRadius: '6px',
+            width: 'fit-content'
+          }}>
+            <Timer size={12} />
+            <span>Shift #{activeShift.shiftNumber} · เริ่มกะ: {activeShift.openedAt?.toDate?.().toLocaleString('th-TH', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: 'short' }) || '-'}</span>
+          </div>
+        )}
       </div>
       <div style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#F7FAFC', padding: '6px 16px', borderRadius: '12px', border: '1px solid #E2E8F0' }}>
@@ -129,6 +152,24 @@ function App() {
   const [user, setUser] = useState(null);
   const [userPermissions, setUserPermissions] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [activeShift, setActiveShift] = useState(null);
+
+  // Active Shift Listener
+  useEffect(() => {
+    if (!user) {
+      setActiveShift(null);
+      return;
+    }
+    const q = query(collection(db, 'shifts'), where('status', '==', 'open'));
+    const unsub = onSnapshot(q, (snap) => {
+      if (!snap.empty) {
+        setActiveShift({ id: snap.docs[0].id, ...snap.docs[0].data() });
+      } else {
+        setActiveShift(null);
+      }
+    });
+    return () => unsub();
+  }, [user]);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (u) => {
@@ -197,11 +238,12 @@ function App() {
             <div className="app-container">
               <Sidebar permissions={userPermissions} />
               <main className="main-content">
-                <Header />
+                <Header activeShift={activeShift} />
                 <div className="content-area">
                   <Routes>
                     <Route path="/" element={<Dashboard />} />
                     <Route path="/pos" element={hasPermission('pos') ? <POS /> : <Dashboard />} />
+                    <Route path="/shift" element={hasPermission('pos') ? <ShiftManagement /> : <Dashboard />} />
                     <Route path="/sales-history" element={hasPermission('pos') ? <SalesHistory /> : <Dashboard />} />
                     <Route path="/inventory" element={hasPermission('inventory') ? <Inventory /> : <Dashboard />} />
                     <Route path="/crm" element={hasPermission('crm') ? <CRM /> : <Dashboard />} />

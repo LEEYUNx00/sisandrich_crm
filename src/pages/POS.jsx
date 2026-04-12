@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { db } from '../firebase';
 import html2canvas from 'html2canvas';
-import { collection, onSnapshot, doc, updateDoc, increment, addDoc, serverTimestamp } from 'firebase/firestore';
-import { Search, Plus, Minus, Trash2, Printer, CheckCircle, ShoppingCart, User, ScanLine, X, BadgePercent, Send, CreditCard, Gift, Beer, Smartphone, MoreHorizontal, Briefcase } from 'lucide-react';
+import { collection, onSnapshot, doc, updateDoc, increment, addDoc, serverTimestamp, query, where, getDocs } from 'firebase/firestore';
+import { Search, Plus, Minus, Trash2, Printer, CheckCircle, ShoppingCart, User, ScanLine, X, BadgePercent, Send, CreditCard, Gift, Beer, Smartphone, MoreHorizontal, Briefcase, ArrowRight, Calculator } from 'lucide-react';
 
 // Sub-components
 import ProductItem from '../components/POS/ProductItem';
@@ -12,6 +12,9 @@ import ReceiptModal from '../components/POS/ReceiptModal';
 import CustomerPromptModal from '../components/POS/CustomerPromptModal';
 import AddMemberModal from '../components/POS/AddMemberModal';
 import QuickAddProductModal from '../components/POS/QuickAddProductModal';
+import ProductDetailModal from '../components/POS/ProductDetailModal';
+import ItemDiscountModal from '../components/POS/ItemDiscountModal';
+import BillDiscountModal from '../components/POS/BillDiscountModal';
 
 export default function POS() {
   const [cart, setCart] = useState([]);
@@ -27,12 +30,22 @@ export default function POS() {
 
   // Promotions
   const [promotions, setPromotions] = useState([]);
-  const [selectedPromotion, setSelectedPromotion] = useState('');
+  const [selectedPromotion, setSelectedPromotion] = useState(null);
+  const [customGlobalDiscount, setCustomGlobalDiscount] = useState(0);
+  const [customGlobalDiscountType, setCustomGlobalDiscountType] = useState('amount'); // 'amount' | 'percent'
 
   // Quick Add Product
   const [showQuickAdd, setShowQuickAdd] = useState(false);
   const [quickAddBarcode, setQuickAddBarcode] = useState('');
   const [quickAddForm, setQuickAddForm] = useState({ name: '', price: '', category: 'General', stock: 1 });
+
+  const [detailProduct, setDetailProduct] = useState(null);
+  const [showDetailModal, setShowDetailModal] = useState(false);
+
+  const [selectedItemForDiscount, setSelectedItemForDiscount] = useState(null);
+  const [showItemDiscountModal, setShowItemDiscountModal] = useState(false);
+
+  const [showBillDiscountModal, setShowBillDiscountModal] = useState(false);
 
   // Customer Search in Modal
   const [modalCustomerSearch, setModalCustomerSearch] = useState('');
@@ -58,6 +71,9 @@ export default function POS() {
   const [limitCount, setLimitCount] = useState(32); // แสดงทีละ 32 รายการ
   const [employees, setEmployees] = useState([]);
   const [selectedSeller, setSelectedSeller] = useState(null);
+  
+  // Receipt / Print Settings from Firestore
+  const [printSettings, setPrintSettings] = useState({ shopName: 'SIS&RICH', address: '', blessings: 'ขอบคุณที่แวะมาอุดหนุนค่ะ' });
 
   // Printer Bridge Connection Status
   const [bridgeStatus, setBridgeStatus] = useState('Checking...');
@@ -87,6 +103,17 @@ export default function POS() {
     const unsubEmployees = onSnapshot(collection(db, 'employees'), snapshot => {
       const empList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setEmployees(empList.filter(e => e.status === 'Active'));
+    });
+
+    const unsubSettings = onSnapshot(doc(db, 'settings', 'receipt'), (doc) => {
+      if (doc.exists()) {
+        const data = doc.data();
+        setPrintSettings({
+          shopName: data.shopName || 'SIS&RICH',
+          address: data.address || '',
+          blessings: data.blessings || 'ขอบคุณที่แวะมาอุดหนุนค่ะ'
+        });
+      }
     });
 
     // 📡 Ping Printer Bridge every 5 seconds (Using 127.0.0.1 for maximum reliability)
@@ -138,17 +165,19 @@ export default function POS() {
     if (isRestricted && currentStock <= 0) {
       return alert(`❌ สินค้าหมด! (โหมด Restricted: ไม่สามารถขายสินค้าที่ไม่มีในสต็อกได้)`);
     }
-    
+
     setCart(prev => {
-      const exists = prev.find(item => item.id === product.id);
+      // Find if an item with the SAME ID AND SAME DISCOUNT exists
+      const exists = prev.find(item => item.id === product.id && (item.itemDiscount || 0) === 0);
       if (exists) {
-        if (isRestricted && exists.qty >= currentStock) {
-          alert(`⚠️ ขออภัย: สินค้าชิ้นนี้เหลือในสต็อกเพียง ${currentStock} ชิ้นเท่านั้น`);
-          return prev;
-        }
-        return prev.map(item => item.id === product.id ? { ...item, qty: item.qty + 1 } : item);
+        return prev.map(item => (item.id === product.id && (item.itemDiscount || 0) === 0) ? { ...item, qty: item.qty + 1 } : item);
       }
-      return [...prev, { ...product, qty: 1 }];
+      return [...prev, { 
+        ...product, 
+        qty: 1, 
+        itemDiscount: 0, 
+        itemDiscountType: 'amount'
+      }];
     });
   };
 
@@ -224,38 +253,60 @@ export default function POS() {
     }
   };
 
-  const updateQty = (id, delta) => {
-    const productData = products.find(p => p.id === id);
-    if (!productData) return;
-    const stockMode = productData.stockMode || 'Stock Control [Restricted]';
-    const isRestricted = stockMode === 'Restricted' || stockMode === 'Stock Control [Restricted]';
-    const currentStock = productData.stock1st || 0;
-
-    setCart(prev => prev.map(item => {
-      if (item.id === id) {
-        const newQty = item.qty + delta;
-        if (isRestricted && newQty > currentStock) {
-          alert(`⚠️ ไม่สามารถขายเกินจำนวนสต็อกจริงได้ (${currentStock} ชิ้น)`);
-          return item; 
-        }
-        return { ...item, qty: newQty > 0 ? newQty : 1 };
-      }
-      return item;
-    }));
+  const updateQty = (id, delta, currentDiscount = 0) => {
+    setCart(prev => {
+      const item = prev.find(i => i.id === id && (i.itemDiscount || 0) === currentDiscount);
+      if (!item) return prev;
+      
+      const newQty = item.qty + delta;
+      if (newQty <= 0) return prev.filter(i => !(i.id === id && (i.itemDiscount || 0) === currentDiscount));
+      
+      return prev.map(i => (i.id === id && (i.itemDiscount || 0) === currentDiscount) ? { ...i, qty: newQty } : i);
+    });
   };
 
-  const removeFromCart = (id) => setCart(prev => prev.filter(item => item.id !== id));
+  const removeFromCart = (id, currentDiscount = 0) => {
+    setCart(prev => prev.filter(item => !(item.id === id && (item.itemDiscount || 0) === currentDiscount)));
+  };
 
-  const getTotal = () => cart.reduce((sum, item) => sum + ((item.price || 0) * item.qty), 0);
+  const getTotal = () => {
+    return cart.reduce((sum, item) => {
+      const itemBase = item.price * item.qty;
+      let discount = 0;
+      if (item.itemDiscountType === 'percent') {
+        discount = (itemBase * (item.itemDiscount || 0)) / 100;
+      } else {
+        discount = (item.itemDiscount || 0) * item.qty;
+      }
+      return sum + (itemBase - discount);
+    }, 0);
+  };
+
   const getTax = () => 0; // สมมติว่าราคารวม VAT แล้ว หรือยังไม่คำนวณภาษีแยก
 
   const getDiscountAmount = () => {
-    if (!selectedPromotion) return 0;
-    const promo = promotions.find(p => p.id === selectedPromotion);
-    if (!promo || !promo.is_active) return 0;
-    if (promo.discount_type === 'amount') return Number(promo.discount_value);
-    if (promo.discount_type === 'percent') return (getTotal() * Number(promo.discount_value)) / 100;
-    return 0;
+    let totalDisc = 0;
+    const subtotal = getTotal();
+
+    // 1. Promotion Discount
+    if (selectedPromotion) {
+      if (selectedPromotion.discount_type === 'percent') {
+        totalDisc += (subtotal * Number(selectedPromotion.discount_value || 0)) / 100;
+      } else {
+        totalDisc += Number(selectedPromotion.discount_value || 0);
+      }
+    }
+
+    // 2. Custom Global Discount
+    if (customGlobalDiscount > 0) {
+      if (customGlobalDiscountType === 'percent') {
+        totalDisc += (subtotal * customGlobalDiscount) / 100;
+      } else {
+        totalDisc += customGlobalDiscount;
+      }
+    }
+
+    return totalDisc;
   };
 
   const getGrandTotal = () => Math.max(0, getTotal() - getDiscountAmount() + getTax());
@@ -398,8 +449,6 @@ export default function POS() {
        setSelectedCustomer(added.id);
        setShowAddMemberModal(false);
        setCustomerForm({ nickname: '', phone: '', gender: 'Male' });
-       // Auto proceed to checkout after registering or stay? Let's stay so they see the discount section
-       // If they want to checkout right away we could call processCheckout()
     } catch(err) {
        alert("พบปัญหาในการสมัครสมาชิก: " + err.message);
     }
@@ -447,12 +496,19 @@ export default function POS() {
     setIsProcessing(true);
 
     try {
+      // 0. Get active shift ID
+      let activeShiftId = null;
+      try {
+        const shiftQ = query(collection(db, 'shifts'), where('status', '==', 'open'));
+        const shiftSnap = await getDocs(shiftQ);
+        if (!shiftSnap.empty) activeShiftId = shiftSnap.docs[0].id;
+      } catch (e) { /* no shift open, ignore */ }
+
       // 1. Process Product Stock Deduction & History Log
       const batchLogRef = collection(db, 'inventory_logs');
       const productPromises = cart.map(async (item) => {
         const productRef = doc(db, 'products', item.id);
         
-        // ถ้าเป็นโหมด No Stock จะไม่ไปตัดสต็อกเลย (เหมาะสำหรับค่าบริการ)
         if (item.stockMode === 'No Stock') {
            // Skip deduction
         } else {
@@ -462,7 +518,6 @@ export default function POS() {
            });
         }
 
-        // บันทึกลงใน inventory_logs ว่าถูกขายไป
         await addDoc(batchLogRef, {
           productId: item.id,
           sku: item.sku || '',
@@ -501,7 +556,6 @@ export default function POS() {
         if (usedStoreCredit > 0) {
            updateObj.storeCredit = increment(-usedStoreCredit);
            
-           // Record usage log
            await addDoc(collection(db, 'system_logs'), {
              type: 'pos',
              action: 'ใช้เครดิทจ่ายเงิน (POS Credit Pay)',
@@ -515,8 +569,6 @@ export default function POS() {
       }
 
       // 3. Save Sales Report Document
-      const promoData = selectedPromotion ? promotions.find(p => p.id === selectedPromotion) : null;
-      
       const now = new Date();
       const fDate = `${now.getFullYear().toString().slice(-2)}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
       const fTime = `${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`;
@@ -525,20 +577,33 @@ export default function POS() {
 
       const newReceipt = {
         billId: billIdStr,
-        items: cart.map(item => ({ 
-          id: item.id, 
-          name: item.name, 
-          sku: item.sku, 
-          qty: item.qty, 
-          price: item.price,
-          subtotal: item.price * item.qty 
-        })),
+        items: cart.map(item => {
+          const itemBase = item.price * item.qty;
+          let disc = 0;
+          if (item.itemDiscountType === 'percent') {
+            disc = (itemBase * (item.itemDiscount || 0)) / 100;
+          } else {
+            disc = (item.itemDiscount || 0) * item.qty;
+          }
+          return { 
+            id: item.id, 
+            name: item.name, 
+            sku: item.sku, 
+            qty: item.qty, 
+            price: item.price,
+            itemDiscount: item.itemDiscount || 0,
+            itemDiscountType: item.itemDiscountType || 'amount',
+            subtotal: itemBase - disc
+          };
+        }),
         totalQty: cart.reduce((sum, item) => sum + item.qty, 0),
         subTotal: getTotal(),
         tax: getTax(),
-        discountAmount: getDiscountAmount(),
-        promotion_id: selectedPromotion || null,
-        promotion_name: promoData ? promoData.name : null,
+        discount: getDiscountAmount(),
+        customGlobalDiscount: customGlobalDiscount,
+        customGlobalDiscountType: customGlobalDiscountType,
+        promotionId: selectedPromotion?.id || null,
+        promotionName: selectedPromotion?.name || null,
         grandTotal: getGrandTotal(),
         payments: finalPayments,
         totalPaid: getPaidTotal(),
@@ -546,6 +611,7 @@ export default function POS() {
         customer: customerInfo,
         seller: selectedSeller ? { id: selectedSeller.id, name: selectedSeller.name } : { id: 'generic', name: 'General Staff' },
         staff: 'Admin Staff',
+        shiftId: activeShiftId,
         timestamp: serverTimestamp(),
       };
 
@@ -572,59 +638,117 @@ export default function POS() {
     }
   };
 
+  const handleProductUpdate = async (updatedData) => {
+    try {
+      const productRef = doc(db, 'products', updatedData.id);
+      await updateDoc(productRef, {
+        name: updatedData.name,
+        category: updatedData.category || '',
+        price: Number(updatedData.price),
+        cost: Number(updatedData.cost) || 0,
+        shelf1st: updatedData.shelf1st || '',
+        shelf3rd: updatedData.shelf3rd || '',
+        stock1st: Number(updatedData.stock1st) || 0,
+        stock3rd: Number(updatedData.stock3rd) || 0,
+        stockMode: updatedData.stockMode || 'Stock Control [Overselling]',
+        image: updatedData.image || ''
+      });
+
+      // Update in cart if it exists
+      setCart(prev => prev.map(item => 
+        item.id === updatedData.id 
+          ? { ...item, ...updatedData, price: Number(updatedData.price) } 
+          : item
+      ));
+
+      setShowDetailModal(false);
+      alert("บันทึกข้อมูลเรียบร้อย!");
+    } catch (e) {
+      alert("เกิดข้อผิดพลาดในการอัปเดต: " + e.message);
+    }
+  };
+
+  const handleProductDelete = async () => {
+    if (!detailProduct) return;
+    if (window.confirm(`⚠️ คุณต้องการลบสินค้า "${detailProduct.name}" ออกจากระบบใช่หรือไม่?\n(การลบนี้จะมีผลถาวรใน Inventory)`)) {
+      try {
+        await deleteDoc(doc(db, 'products', detailProduct.id));
+        removeFromCart(detailProduct.id);
+        setShowDetailModal(false);
+        alert("ลบสินค้าสำเร็จ!");
+      } catch (e) {
+        alert("Error: " + e.message);
+      }
+    }
+  };
+
+  const handleItemDiscountApply = ({ value, type, mode }) => {
+    if (!selectedItemForDiscount) return;
+
+    setCart(prev => {
+      const item = selectedItemForDiscount;
+      const otherItems = prev.filter(i => !(i.id === item.id && i.itemDiscount === item.itemDiscount));
+      
+      if (mode === 'split' && item.qty > 1) {
+        // แยก 1 ชิ้นออกมาใส่ส่วนลดใหม่
+        return [
+          ...otherItems,
+          { ...item, qty: item.qty - 1 },
+          { ...item, qty: 1, itemDiscount: value, itemDiscountType: type }
+        ];
+      } else {
+        // ใช้ส่วนลดกับทุกชิ้นในแถวนี้
+        return prev.map(i => (i.id === item.id && i.itemDiscount === item.itemDiscount) 
+          ? { ...i, itemDiscount: value, itemDiscountType: type } 
+          : i
+        );
+      }
+    });
+
+    setShowItemDiscountModal(false);
+    setSelectedItemForDiscount(null);
+  };
+
+  const handleBillDiscountApply = (value, type) => {
+    setCustomGlobalDiscount(value);
+    setCustomGlobalDiscountType(type);
+    setShowBillDiscountModal(false);
+  };
+
   const handleCloseReceipt = () => {
     setCart([]);
     setSelectedCustomer('');
     setIsSuccess(false);
     setReceiptData(null);
     setSearchTerm('');
+    setCustomGlobalDiscount(0);
+    setSelectedPromotion(null);
     searchInputRef.current?.focus();
   };
 
   const printReceiptNativeText = async () => {
     if (bridgeStatus === 'Connected' && receiptData) {
       try {
-        console.log("📝 Generating Native Text Receipt...");
-        
-        const settings = printSettings || { shopName: 'SIS&RICH', address: '', blessings: 'ขอบคุณที่แวะมาอุดหนุนค่ะ' };
+        const settings = printSettings;
         const items = receiptData.items || [];
-        
-        // Helper สร้างขีดคั่น
         const line = "------------------------------------------\n";
-
-        // ESC/POS Formatting Codes (ใช้ได้โดยตรงเพราะ Bridge ไม่แปลงค่า < 32)
-        const dHeight = "\x1B\x21\x10"; // Double height
-        const normal = "\x1B\x21\x00"; // Normal size
-        const center = "\x1B\x61\x01"; // Center align
-        const left = "\x1B\x61\x00"; // Left align
-        const bold = "\x1B\x45\x01"; // Bold on
-        const resetBold = "\x1B\x45\x00"; // Bold off
+        const dHeight = "\x1B\x21\x10";
+        const normal = "\x1B\x21\x00";
+        const center = "\x1B\x61\x01";
+        const left = "\x1B\x61\x00";
+        const bold = "\x1B\x45\x01";
+        const resetBold = "\x1B\x45\x00";
 
         let text = "";
-        
-        // Header
         text += center + dHeight + bold + (settings.shopName || "SIS&RICH") + "\n";
         text += bold + "RECEIPT" + resetBold + normal + "\n";
-        
-        // Address
-        const addrLines = (settings.address || "").split('\n');
-        addrLines.forEach(l => {
-          text += l + "\n";
-        });
-        text += "\n";
-
-        // Info
         text += left + `Date: ${receiptData.printedDate?.toLocaleString('th-TH') || new Date().toLocaleString('th-TH')}\n`;
         text += `Receipt No.: ${receiptData.billId}\n`;
         text += `Cashier: ${receiptData.staff || "Admin Staff"}\n`;
         text += `Member: ${receiptData.customer?.name || "Walk-in Customer"}\n`;
         text += line;
-        
-        // Items Header
         text += "Items/Services       Qty.   Price    Total\n";
         text += line;
-        
-        // Items List
         items.forEach(item => {
           const sku = (item.sku || 'Item').substring(0, 18).padEnd(18);
           const qty = `${(item.qty || 0).toFixed(0)}x`.padStart(5);
@@ -632,108 +756,61 @@ export default function POS() {
           const total = `${(item.subtotal || 0).toLocaleString()}`.padStart(9);
           text += `${sku}${qty}${price}${total}\n`;
         });
-        
         text += line;
-        
-        // Summary
-        const subtotal = (receiptData.subTotal || 0).toLocaleString();
-        const discount = (receiptData.discountAmount || 0).toLocaleString();
-        const grandTotal = (receiptData.grandTotal || 0).toLocaleString();
-        const paid = (receiptData.totalPaid || 0).toLocaleString();
-        const change = (receiptData.changeAmount || 0).toLocaleString();
-
-        text += " ".repeat(15) + `Sub-Total: ${subtotal.padStart(15)}\n`;
-        if (receiptData.discountAmount > 0) {
-          text += " ".repeat(15) + `Discount:  -${discount.padStart(14)}\n`;
+        text += " ".repeat(15) + `Sub-Total: ${(receiptData.subTotal || 0).toLocaleString().padStart(15)}\n`;
+        if (receiptData.discount > 0) {
+          text += " ".repeat(15) + `Discount:  -${(receiptData.discount || 0).toLocaleString().padStart(14)}\n`;
         }
-        text += bold + " ".repeat(15) + `Total:     ${grandTotal.padStart(15)}\n` + resetBold;
-        text += " ".repeat(15) + `Paid:      ${paid.padStart(15)}\n`;
-        text += " ".repeat(15) + `Change:    ${change.padStart(15)}\n\n`;
+        text += bold + " ".repeat(15) + `Total:     ${(receiptData.grandTotal || 0).toLocaleString().padStart(15)}\n` + resetBold;
+        // Dynamic Payment Methods list
+        if (receiptData.payments && receiptData.payments.length > 0) {
+          receiptData.payments.forEach(p => {
+            const label = p.method === 'cash' ? 'Paid (Cash):' : 
+                          p.method === 'transfer' ? 'Paid (Trans):' : 
+                          p.method === 'storeCredit' ? 'Paid (Wallet):' : 
+                          `Paid (${p.method}):`;
+            text += " ".repeat(15) + `${label.padEnd(16)}${(p.amount || 0).toLocaleString().padStart(11)}\n`;
+          });
+        } else {
+          text += " ".repeat(15) + `Paid:      ${(receiptData.totalPaid || 0).toLocaleString().padStart(15)}\n`;
+        }
         
-        // Footer
-        text += center + "Thank You\n";
-        text += (settings.blessings?.split('\n')[0] || "ขอให้รวยๆ นะคะ") + "\n";
-        text += "\n\n";
+        text += " ".repeat(15) + `Change:    ${(receiptData.changeAmount || 0).toLocaleString().padStart(15)}\n\n`;
+        text += center + "Thank You\n" + (settings.blessings?.split('\n')[0] || "ขอให้รวยๆ นะคะ") + "\n\n\n";
 
-        // ส่งข้อความไปที่โปรแกรมสะพาน SIS_RICH_Bridge.exe
         await fetch('http://127.0.0.1:8000/print-receipt-text', {
           method: 'POST',
           mode: 'cors',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            printerName: 'XP-80C',
-            text: text
-          })
+          body: JSON.stringify({ printerName: 'XP-80C', text: text })
         });
-
-        console.log("✅ Native Text Receipt Sent!");
       } catch (err) {
         console.error("Native print failed:", err);
-        // Fallback to Image Print if something died
         printReceipt();
       }
     }
   };
 
   const printReceipt = async () => {
-    // 📸 ถ่ายรูปภาพบิลดีไซน์จริง (Mirror of Management Preview)
     if (bridgeStatus === 'Connected' && receiptData) {
       try {
-        console.log("📸 Capturing Receipt Layout...");
-        
-        // รอให้ Modal เสถียรก่อนแป๊บนึง (100ms) เพื่อป้องกันหน้าขาว
         await new Promise(resolve => setTimeout(resolve, 100));
-
-        // ค้นหาต้นฉบับบิลที่จัดหน้าไว้แล้ว (อยู่ใน ReceiptModal)
         const receiptElement = document.querySelector('.print-area');
-        if (!receiptElement) {
-          return alert("❌ ไม่พบเทมเพลตบิล กรุณาลองกด 'พิมพ์ใบเสร็จ' อีกครั้งครับ");
-        }
-
-        // ถ่ายภาพระดับสตูดิโอ (เพิ่มความทนทานต่อ CORS)
-        const canvas = await html2canvas(receiptElement, {
-          scale: 4.0,
-          useCORS: true,
-          allowTaint: false, // ห้ามใช้รูปที่ติด Proxy เพื่อไม่ให้ Canvas เสีย (Tainted)
-          backgroundColor: '#ffffff',
-          logging: true,
-          // ถ้ามีรูปที่โหลดไม่ได้ ให้ตัวโปรแกรมรันต่อไปได้
-          removeContainer: true
-        });
-
-        let imageData = null;
-        try {
-          imageData = canvas.toDataURL('image/png');
-        } catch (canvasErr) {
-          console.error("Canvas is tainted, sending empty image or fallback", canvasErr);
-          // ถ้าถ่ายรูปไม่ได้จริงๆ ให้ใช้ระบบพิมพ์ปกติของเบราว์เซอร์
-          return window.print();
-        }
-
-        // ส่งรูปภาพไปที่โปรแกรมสะพาน SIS_RICH_Bridge.exe (ใช้ IP 127.0.0.1)
-        const response = await fetch('http://127.0.0.1:8000/print-receipt', {
+        if (!receiptElement) return alert("❌ ไม่พบเทมเพลตบิล");
+        const canvas = await html2canvas(receiptElement, { scale: 4.0, useCORS: true, backgroundColor: '#ffffff' });
+        const imageData = canvas.toDataURL('image/png');
+        await fetch('http://127.0.0.1:8000/print-receipt', {
           method: 'POST',
           mode: 'cors',
-          credentials: 'omit',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            printerName: 'XP-80C',
-            image: imageData,
-            billId: receiptData.billId
-          })
+          body: JSON.stringify({ printerName: 'XP-80C', image: imageData, billId: receiptData.billId })
         });
-        
-        if (response.ok) {
-           console.log("✅ Direct PRINT via EXE mirrored successfully!");
-           return; 
-        }
       } catch (err) {
-        console.warn("Direct mirror print failed, fallback to standard...", err);
+        window.print();
       }
+    } else {
+      window.print();
     }
-
-    // 🔄 Fallback: ถ้าลืมเปิดโปรแกรม EXE ให้ใช้ระบบปกติเบราว์เซอร์
-    window.print();
   };
 
   return (
@@ -741,34 +818,16 @@ export default function POS() {
       <style>
         {`
           @media print {
-            .sidebar, .top-header, .pos-layout, .card, .hide-on-print, button, nav {
-              display: none !important;
-            }
-            .print-area {
-              display: block !important;
-              visibility: visible !important;
-              position: static;
-              width: 72mm !important;
-              margin: 0 auto;
-              padding: 0;
-              background: white !important;
-              color: black !important;
-              font-family: 'Courier New', Courier, monospace;
-            }
+            .sidebar, .top-header, .pos-layout, .card, .hide-on-print, button, nav { display: none !important; }
+            .print-area { display: block !important; visibility: visible !important; position: static; width: 72mm !important; margin: 0 auto; padding: 0; background: white !important; color: black !important; font-family: 'Courier New', Courier, monospace; }
             @page { margin: 0; size: auto; }
           }
         `}
       </style>
 
-      {/* POS Layout Container (Ultra Compact) */}
       <div className={`animate-slide-in pos-layout ${receiptData ? 'hide-on-print' : ''}`} style={{ display: 'flex', flexDirection: 'column', gap: '8px', height: 'calc(100vh - 85px)', overflow: 'hidden' }}>
-        
-        {/* Main POS Grid - Wider Product Area */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 2.2fr) minmax(380px, 1fr)', gap: '20px', flex: 1, overflow: 'hidden' }}>
-          
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 420px', gap: '20px', flex: 1, overflow: 'hidden' }}>
           <div className="pos-left" style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', paddingLeft: '4px' }}>
-            
-            {/* Integrated Status & Category Bar */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexShrink: 0 }}>
               <div style={{ display: 'flex', gap: '6px', overflowX: 'auto', paddingBottom: '4px', whiteSpace: 'nowrap', msOverflowStyle: 'none', scrollbarWidth: 'none', flex: 1 }}>
                  {categories.map(cat => (
@@ -782,18 +841,10 @@ export default function POS() {
                    </button>
                  ))}
               </div>
-
-              {/* Discrete Remote Status */}
               <div style={{ display: 'flex', gap: '8px', marginLeft: '12px', flexShrink: 0 }}>
-                 <div style={{ 
-                    display: 'flex', alignItems: 'center', gap: '4px', padding: '4px 10px', borderRadius: '15px', 
-                    background: bridgeStatus === 'Connected' ? '#F0FFF4' : '#FFF5F5', 
-                    border: `1px solid ${bridgeStatus === 'Connected' ? '#68D391' : '#FEB2B2'}`,
-                    fontSize: '10px', fontWeight: 'bold', color: bridgeStatus === 'Connected' ? '#2F855A' : '#C53030'
-                 }}>
+                 <div style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '4px 10px', borderRadius: '15px', background: bridgeStatus === 'Connected' ? '#F0FFF4' : '#FFF5F5', border: `1px solid ${bridgeStatus === 'Connected' ? '#68D391' : '#FEB2B2'}`, fontSize: '10px', fontWeight: 'bold', color: bridgeStatus === 'Connected' ? '#2F855A' : '#C53030' }}>
                     <Printer size={12} /> {bridgeStatus}
                  </div>
-                 <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#48BB78', alignSelf: 'center' }} title="Online"></div>
               </div>
             </div>
 
@@ -811,45 +862,31 @@ export default function POS() {
                     style={{ height: '40px' }}
                     onChange={(e) => { 
                       const val = e.target.value;
-                      // Thai to English mapping for common characters
-                      const thToEn = {
-                        'ห':'s','พ':'r','ะ':'t','ั':'u','ี':'i','ย':'o','บ':'p','ล':'[','ฃ':']',
-                        'ฟ':'a','ห':'s','ก':'d','ด':'f','เ':'g','้':'h','่':'j','า':'k','ส':'l','ว':';','ง':'\'',
-                        'ผ':'z','ป':'x','แ':'c','อ':'v','ิ':'b','ื':'n','ท':'m','ม':',','ใ':'.','ฝ':'/',
-                        '๐':'0','๑':'1','๒':'2','๓':'3','๔':'4','๕':'5','๖':'6','๗':'7','๘':'8','๙':'9',
-                        'ๅ':'1','/':'2','-':'3','ภ':'4','ถ':'5','ุ':'6','ู':'7','ค':'8','ต':'9','จ':'0'
-                      };
-                      const corrected = val.split('').map(char => thToEn[char] || char).join('');
-                      setSearchTerm(corrected); 
-                      if (corrected) setLimitCount(32); 
+                      setSearchTerm(val); 
+                      if (val) setLimitCount(32); 
                     }}
                     autoFocus
                     autoComplete="off"
-                    autoCorrect="off"
-                    autoCapitalize="off"
-                    spellCheck="false"
                   />
                 </div>
               </div>
             </form>
           </div>
 
-          {/* Product Grid - Compact Format */}
           <div className="pos-products" style={{ 
             flex: 1, 
             overflowY: 'auto', 
             display: 'grid', 
-            gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))', 
-            gap: '8px', 
-            paddingRight: '8px', 
-            paddingLeft: '4px',
-            alignContent: 'start' 
+            gridTemplateColumns: 'repeat(5, 1fr)', 
+            gap: '12px', 
+            paddingRight: '6px', 
+            paddingLeft: '6px',
+            paddingBottom: '40px'
           }}>
             {!shouldShowList ? (
               <div style={{ gridColumn: '1 / -1', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '100px 40px', color: '#A0AEC0', textAlign: 'center' }}>
                 <Search size={64} style={{ opacity: 0.2, marginBottom: '20px' }} />
                 <h3 style={{ fontSize: '18px', color: '#718096', marginBottom: '8px' }}>เริ่มการขาย (Browse Products)</h3>
-                <p style={{ fontSize: '14px' }}>กรุณาเลือก **"กลุ่ม/ประเภทสินค้า"** ด้านบน <br/>หรือ **"พิมพ์ค้นหา"** เพื่อแสดงรายการสินค้า</p>
               </div>
             ) : displayProducts.length === 0 ? (
               <div style={{ color: 'var(--text-muted)', gridColumn: '1 / -1', textAlign: 'center', padding: '40px' }}>ไม่พบรหัสสินค้าที่ตรงกับการค้นหา</div>
@@ -866,16 +903,9 @@ export default function POS() {
                     />
                   );
                 })}
-                
                 {hasMore && (
                   <div style={{ gridColumn: '1 / -1', padding: '20px', textAlign: 'center' }}>
-                    <button 
-                      className="btn btn-outline" 
-                      onClick={() => setLimitCount(prev => prev + 32)}
-                      style={{ width: '200px', fontSize: '13px' }}
-                    >
-                      ดูเพิ่ม... (Load More)
-                    </button>
+                    <button className="btn btn-outline" onClick={() => setLimitCount(prev => prev + 32)} style={{ width: '200px', fontSize: '13px' }}>ดูเพิ่ม...</button>
                   </div>
                 )}
               </>
@@ -883,21 +913,15 @@ export default function POS() {
           </div>
         </div>
 
-        {/* Right side: Cart & CheckoutPanel */}
         <div className="card" style={{ display: 'flex', flexDirection: 'column', padding: 0, overflow: 'hidden', backgroundColor: '#fff' }}>
-          
-          {/* Cart Header */}
-
-          {/* Cart Header */}
           <div style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 16px', background: '#EDF2F7', fontSize: '12px', fontWeight: 'bold', color: '#4A5568' }}>
             <span>รายการสินค้า ({cart.length})</span>
-            <div style={{ display: 'flex', width: '130px', justifyContent: 'space-between' }}>
-               <span>จำนวน</span>
-               <span>รวม (฿)</span>
+            <div style={{ display: 'flex', width: '240px', justifyContent: 'space-between' }}>
+               <span style={{ flex: 1, textAlign: 'center' }}>ส่วนลด / จำนวน</span>
+               <span style={{ width: '80px', textAlign: 'right' }}>รวม (฿)</span>
             </div>
           </div>
 
-          {/* Cart Items List */}
           <div style={{ flex: 1, overflowY: 'auto', padding: '0' }}>
             {cart.length === 0 ? (
               <div style={{ textAlign: 'center', color: '#A0AEC0', marginTop: '60px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
@@ -907,30 +931,88 @@ export default function POS() {
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column' }}>
                 {cart.map(item => (
-                  <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 12px', borderBottom: '1px solid #EDF2F7', background: '#fff' }}>
-                    
-                    <div style={{ flex: 1, paddingRight: '8px', minWidth: 0 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '1px' }}>
-                         <h4 style={{ fontSize: '12px', color: '#2D3748', fontWeight: 'bold', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.name}</h4>
-                         <span style={{ fontSize: '10px', color: '#718096', background: '#F7FAFC', padding: '0 4px', borderRadius: '4px', border: '1px solid #EDF2F7', flexShrink: 0 }}>{item.sku}</span>
+                  <div key={`${item.id}-${item.itemDiscount}`} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 12px', borderBottom: '1px solid #EDF2F7', background: '#fff' }}>
+                    <div style={{ flex: 1, paddingRight: '12px', minWidth: '150px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                         <h4 style={{ fontSize: '13px', color: '#1e293b', fontWeight: '800', margin: 0 }}>{item.name}</h4>
+                         <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                            <button 
+                                onClick={() => { setDetailProduct(item); setShowDetailModal(true); }}
+                                style={{ fontSize: '11px', color: '#3b82f6', background: '#eff6ff', padding: '2px 8px', borderRadius: '6px', border: '1px solid #dbeafe', fontWeight: 'bold', cursor: 'pointer', outline: 'none' }}
+                              >
+                                {item.sku}
+                            </button>
+                            <button 
+                                onClick={() => {
+                                  setSelectedItemForDiscount(item);
+                                  setShowItemDiscountModal(true);
+                                }}
+                                title="แก้ไขส่วนลด"
+                                style={{ background: item.itemDiscount > 0 ? '#ef4444' : '#f1f5f9', border: 'none', borderRadius: '6px', padding: '4px', cursor: 'pointer', color: item.itemDiscount > 0 ? 'white' : '#64748b', display: 'flex', alignItems: 'center', boxShadow: item.itemDiscount > 0 ? '0 2px 4px rgba(239, 68, 68, 0.2)' : 'none' }}
+                              >
+                                <BadgePercent size={14} />
+                            </button>
+                         </div>
                       </div>
                     </div>
-
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                       <div style={{ display: 'flex', alignItems: 'center', background: '#F7FAFC', border: '1px solid #E2E8F0', borderRadius: '4px' }}>
-                        <button style={{ border: 'none', background: 'transparent', padding: '4px 6px', cursor: 'pointer', color: '#4A5568' }} onClick={() => updateQty(item.id, -1)}><Minus size={12}/></button>
+                        <button style={{ border: 'none', background: 'transparent', padding: '4px 6px', cursor: 'pointer', color: '#4A5568' }} onClick={() => updateQty(item.id, -1, item.itemDiscount)}><Minus size={12}/></button>
                         <span style={{ fontSize: '12px', width: '20px', textAlign: 'center', fontWeight: 'bold', color: '#2B6CB0' }}>{item.qty}</span>
-                        <button style={{ border: 'none', background: 'transparent', padding: '4px 6px', cursor: 'pointer', color: '#4A5568' }} onClick={() => updateQty(item.id, 1)}><Plus size={12}/></button>
+                        <button style={{ border: 'none', background: 'transparent', padding: '4px 6px', cursor: 'pointer', color: '#4A5568' }} onClick={() => updateQty(item.id, 1, item.itemDiscount)}><Plus size={12}/></button>
                       </div>
-                      
                       <div style={{ fontWeight: 'bold', width: '55px', textAlign: 'right', color: '#2D3748', fontSize: '14px' }}>
-                        {(item.price * item.qty).toLocaleString()}
+                        {(() => {
+                           const base = item.price * item.qty;
+                           let d = 0;
+                           if (item.itemDiscountType === 'percent') {
+                             d = (base * (item.itemDiscount || 0)) / 100;
+                           } else {
+                             d = (item.itemDiscount || 0) * item.qty;
+                           }
+                           return (base - d).toLocaleString();
+                        })()}
                       </div>
 
-                      <button className="btn-icon" style={{ padding: '4px', color: '#E53E3E', background: '#FFF5F5' }} onClick={() => removeFromCart(item.id)}>
+                      <button className="btn-icon" style={{ padding: '4px', color: '#E53E3E', background: '#FFF5F5' }} onClick={() => removeFromCart(item.id, item.itemDiscount)}>
                         <Trash2 size={14} />
                       </button>
                     </div>
+
+                    {/* Clickable Discount Summary */}
+                    {(item.itemDiscount > 0) && (
+                      <div 
+                        onClick={() => {
+                          setSelectedItemForDiscount(item);
+                          setShowItemDiscountModal(true);
+                        }}
+                        style={{ 
+                          gridColumn: '1 / -1', 
+                          marginTop: '6px', 
+                          padding: '6px 10px', 
+                          fontSize: '11px', 
+                          color: '#ef4444', 
+                          background: '#fff1f2',
+                          borderRadius: '8px',
+                          border: '1px dashed #fecaca',
+                          fontWeight: '800', 
+                          display: 'flex', 
+                          alignItems: 'center', 
+                          justifyContent: 'space-between',
+                          cursor: 'pointer',
+                          transition: 'all 0.2s'
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <BadgePercent size={14} />
+                          <span>ลด {item.itemDiscountType === 'percent' ? `${item.itemDiscount}%` : `฿${item.itemDiscount.toLocaleString()}`} / ชิ้น</span>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#991b1b' }}>
+                          <span>ประหยัดรวม ฿{(item.itemDiscountType === 'percent' ? (item.price * item.qty * item.itemDiscount / 100) : (item.itemDiscount * item.qty)).toLocaleString()}</span>
+                          <ArrowRight size={12} />
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -945,13 +1027,42 @@ export default function POS() {
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
               <span style={{ fontSize: '12px', color: '#718096' }}>ส่วนลด (Discount)</span>
-              <select className="input" style={{ width: '120px', margin: 0, padding: '2px 6px', fontSize: '11px', height: '24px' }} value={selectedPromotion} onChange={(e) => setSelectedPromotion(e.target.value)}>
-                <option value="">ไม่มีส่วนลด</option>
-                {promotions.filter(p => p.is_active).map(p => (
-                   <option key={p.id} value={p.id}>{p.name}</option>
-                ))}
-              </select>
+              <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                <select className="input" style={{ width: '120px', margin: 0, padding: '2px 6px', fontSize: '11px', height: '26px' }} value={selectedPromotion} onChange={(e) => setSelectedPromotion(e.target.value)}>
+                  <option value="">โปรโมชั่นระบบ</option>
+                  {promotions.filter(p => p.is_active).map(p => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+                <button 
+                  onClick={() => setShowBillDiscountModal(true)}
+                  style={{ 
+                    background: customGlobalDiscount > 0 ? '#3b82f6' : '#f1f5f9', 
+                    border: 'none', 
+                    width: '26px', 
+                    height: '26px', 
+                    borderRadius: '6px', 
+                    color: customGlobalDiscount > 0 ? 'white' : '#64748b',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    boxShadow: customGlobalDiscount > 0 ? '0 2px 4px rgba(59, 130, 246, 0.3)' : 'none'
+                  }}
+                  title="ระบุส่วนลดเอง"
+                >
+                  <Calculator size={14} />
+                </button>
+              </div>
             </div>
+
+            {/* Global Discount Label */}
+            {customGlobalDiscount > 0 && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px', fontSize: '12px' }}>
+                <span style={{ color: '#3b82f6', fontWeight: 'bold' }}>• ส่วนลดลดบิล ({customGlobalDiscountType === 'percent' ? `${customGlobalDiscount}%` : `฿${customGlobalDiscount}`})</span>
+                <span style={{ color: '#3b82f6', fontWeight: 'bold' }}>- ฿{((customGlobalDiscountType === 'percent' ? (getTotal() * customGlobalDiscount / 100) : customGlobalDiscount)).toLocaleString()}</span>
+              </div>
+            )}
             {selectedPromotion && (
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px', fontSize: '12px', color: '#E53E3E' }}>
                 <span>มูลค่าลด</span>
@@ -1026,6 +1137,15 @@ export default function POS() {
         currentAmount={currentAmount}
         handleKeypadPress={handleKeypadPress}
         setExactAmount={setExactAmount}
+        handleRoundDown={() => {
+          const currentTotal = getGrandTotal();
+          const roundedTotal = Math.floor(currentTotal);
+          if (currentTotal > roundedTotal) {
+            const diff = currentTotal - roundedTotal;
+            setCustomGlobalDiscount(prev => prev + diff);
+            setCustomGlobalDiscountType('amount');
+          }
+        }}
         addCashNote={addCashNote}
         noteCounts={noteCounts}
         addPaymentEntry={addPaymentEntry}
@@ -1057,7 +1177,7 @@ export default function POS() {
       <ReceiptModal
         receiptData={receiptData}
         onClose={handleCloseReceipt}
-        onPrint={printReceiptNativeText}
+        onPrint={printReceipt}
       />
 
       {/* Quick Add Product Modal */}
@@ -1068,6 +1188,30 @@ export default function POS() {
         form={quickAddForm}
         setForm={setQuickAddForm}
         onSubmit={handleQuickAddSubmit}
+      />
+
+      <ProductDetailModal
+        isOpen={showDetailModal}
+        onClose={() => setShowDetailModal(false)}
+        product={detailProduct}
+        onUpdate={handleProductUpdate}
+        onDelete={handleProductDelete}
+      />
+
+      <ItemDiscountModal
+        isOpen={showItemDiscountModal}
+        onClose={() => setShowItemDiscountModal(false)}
+        item={selectedItemForDiscount}
+        onApply={handleItemDiscountApply}
+      />
+
+      <BillDiscountModal
+        isOpen={showBillDiscountModal}
+        onClose={() => setShowBillDiscountModal(false)}
+        subtotal={getTotal()}
+        currentValue={customGlobalDiscount}
+        currentType={customGlobalDiscountType}
+        onApply={handleBillDiscountApply}
       />
     </>
   );

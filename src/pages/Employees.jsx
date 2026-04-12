@@ -17,6 +17,7 @@ export default function Employees() {
     role: 'Staff',
     phone: '',
     email: '',
+    password: '', // New password field
     status: 'Active',
     permissions: {
       pos: true,
@@ -43,20 +44,22 @@ export default function Employees() {
 
   const handleAddEmployee = async (e) => {
     e.preventDefault();
+    setLoading(true);
     try {
       await addDoc(collection(db, 'employees'), {
         ...formData,
         createdAt: serverTimestamp()
       });
-      alert("✅ เพิ่มพนักงานเรียบร้อย!");
+      alert(`✅ เพิ่มพนักงาน "${formData.name}" เรียบร้อย!\nรหัสผ่านคือ: ${formData.password}`);
       setIsModalOpen(false);
       setFormData({ 
-        name: '', role: 'Staff', phone: '', email: '', status: 'Active',
+        name: '', role: 'Staff', phone: '', email: '', password: '', status: 'Active',
         permissions: { pos: true, inventory: false, crm: false, promotions: false, reports: false, employees: false, settings: false } 
       });
     } catch(err) {
       alert("Error: " + err.message);
     }
+    setLoading(false);
   };
 
   const handleUpdateEmployee = async (e) => {
@@ -68,6 +71,7 @@ export default function Employees() {
         role: editingEmployee.role,
         phone: editingEmployee.phone,
         email: editingEmployee.email,
+        password: editingEmployee.password || '',
         status: editingEmployee.status,
         permissions: editingEmployee.permissions || {}
       });
@@ -252,7 +256,7 @@ export default function Employees() {
       {/* --- ADD MODAL --- */}
       {isModalOpen && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(8px)' }}>
-          <div className="card animate-slide-in" style={{ width: '500px', background: 'white', padding: 0, borderRadius: '28px', overflow: 'hidden', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)' }}>
+          <div className="card animate-slide-in" style={{ width: '550px', background: 'white', padding: 0, borderRadius: '28px', overflow: 'hidden', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)' }}>
             
             {/* Modal Header */}
             <div style={{ padding: '24px 32px', background: 'linear-gradient(135deg, #3182CE 0%, #2B6CB0 100%)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -262,7 +266,7 @@ export default function Employees() {
                   </div>
                   <div>
                      <h3 style={{ fontSize: '20px', fontWeight: '900', color: '#FFFFFF' }}>เพิ่มพนักงานใหม่</h3>
-                     <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.7)' }}>กรอกข้อมูลเพื่อสร้างสิทธิ์การใช้งานระบบ</p>
+                     <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.7)' }}>กำหนดข้อมูลบัญชีผู้ใช้และรหัสผ่าน</p>
                   </div>
                </div>
                <button onClick={() => setIsModalOpen(false)} style={{ border: 'none', background: 'rgba(255,255,255,0.1)', padding: '8px', borderRadius: '50%', color: 'white', cursor: 'pointer' }}>
@@ -271,102 +275,68 @@ export default function Employees() {
             </div>
 
             <form onSubmit={handleAddEmployee} style={{ padding: '32px' }}>
-               <div style={{ marginBottom: '20px' }}>
-                 <label style={{ display: 'block', fontSize: '13px', fontWeight: '800', color: '#4A5568', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>ชื่อ-นามสกุล / ชื่อเล่น</label>
-                 <input 
-                   type="text" 
-                   className="input" 
-                   value={formData.name} 
-                   onChange={e => setFormData({...formData, name: e.target.value})} 
-                   required 
-                   placeholder="เช่น คุณแอร์ (Administrator)" 
-                   style={{ background: '#F7FAFC', border: '1px solid #E2E8F0', height: '52px', borderRadius: '14px' }}
-                 />
+               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '20px' }}>
+                 <div>
+                   <label style={{ display: 'block', fontSize: '12px', fontWeight: '800', color: '#4A5568', marginBottom: '8px', textTransform: 'uppercase' }}>ชื่อ-นามสกุล / ชื่อเล่น</label>
+                   <input type="text" className="input" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} required placeholder="เช่น พนักงาน A" style={{ background: '#F7FAFC', border: '1px solid #E2E8F0', height: '52px', borderRadius: '14px' }} />
+                 </div>
+                 <div>
+                   <label style={{ display: 'block', fontSize: '12px', fontWeight: '800', color: '#4A5568', marginBottom: '8px', textTransform: 'uppercase' }}>เบอร์โทรศัพท์</label>
+                   <input type="tel" className="input" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} placeholder="08XXXXXXXX" style={{ background: '#F7FAFC', border: '1px solid #E2E8F0', height: '52px', borderRadius: '14px' }} />
+                 </div>
+               </div>
+
+               <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '20px', marginBottom: '20px' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '12px', fontWeight: '800', color: '#3182CE', marginBottom: '8px', textTransform: 'uppercase' }}>อีเมลสำหรับ Login</label>
+                    <input type="email" className="input" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} required placeholder="user@sisandrich.com" style={{ background: '#EBF8FF', border: '1px solid #BEE3F8', height: '52px', borderRadius: '14px' }} />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '12px', fontWeight: '800', color: '#E53E3E', marginBottom: '8px', textTransform: 'uppercase' }}>รหัสผ่าน (Password)</label>
+                    <input type="text" className="input" value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} required placeholder="ตั้งรหัสพนักงาน" style={{ background: '#FFF5F5', border: '1px solid #FED7D7', height: '52px', borderRadius: '14px' }} />
+                  </div>
                </div>
 
                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '20px' }}>
                   <div>
-                    <label style={{ display: 'block', fontSize: '13px', fontWeight: '800', color: '#4A5568', marginBottom: '8px', textTransform: 'uppercase' }}>ตำแหน่ง (Role)</label>
-                    <select 
-                      className="input" 
-                      value={formData.role} 
-                      onChange={e => setFormData({...formData, role: e.target.value})}
-                      style={{ background: '#F7FAFC', border: '1px solid #E2E8F0', height: '52px', borderRadius: '14px' }}
-                    >
+                    <label style={{ display: 'block', fontSize: '12px', fontWeight: '800', color: '#4A5568', marginBottom: '8px', textTransform: 'uppercase' }}>ตำแหน่ง (Role)</label>
+                    <select className="input" value={formData.role} onChange={e => setFormData({...formData, role: e.target.value})} style={{ background: '#F7FAFC', border: '1px solid #E2E8F0', height: '52px', borderRadius: '14px' }}>
                        <option value="Staff">Staff</option>
                        <option value="Manager">Manager</option>
                        <option value="Admin">Admin</option>
                     </select>
                   </div>
                   <div>
-                    <label style={{ display: 'block', fontSize: '13px', fontWeight: '800', color: '#4A5568', marginBottom: '8px', textTransform: 'uppercase' }}>สถานะ (Status)</label>
-                    <select 
-                       className="input" 
-                       value={formData.status} 
-                       onChange={e => setFormData({...formData, status: e.target.value})}
-                       style={{ background: '#F7FAFC', border: '1px solid #E2E8F0', height: '52px', borderRadius: '14px' }}
-                    >
+                    <label style={{ display: 'block', fontSize: '12px', fontWeight: '800', color: '#4A5568', marginBottom: '8px', textTransform: 'uppercase' }}>สถานะ (Status)</label>
+                    <select className="input" value={formData.status} onChange={e => setFormData({...formData, status: e.target.value})} style={{ background: '#F7FAFC', border: '1px solid #E2E8F0', height: '52px', borderRadius: '14px' }}>
                        <option value="Active">Active</option>
-                       <option value="On Leave">On Leave</option>
                        <option value="Inactive">Inactive</option>
                     </select>
                   </div>
                </div>
 
-               <div style={{ marginBottom: '20px' }}>
-                 <label style={{ display: 'block', fontSize: '13px', fontWeight: '800', color: '#4A5568', marginBottom: '8px', textTransform: 'uppercase' }}>เบอร์โทรศัพท์ติดต่อ</label>
-                 <input 
-                   type="tel" 
-                   className="input" 
-                   value={formData.phone} 
-                   onChange={e => setFormData({...formData, phone: e.target.value})} 
-                   placeholder="081-XXX-XXXX"
-                   style={{ background: '#F7FAFC', border: '1px solid #E2E8F0', height: '52px', borderRadius: '14px' }}
-                 />
-               </div>
-
-               <div style={{ marginBottom: '32px' }}>
-                 <label style={{ display: 'block', fontSize: '13px', fontWeight: '800', color: '#4A5568', marginBottom: '8px', textTransform: 'uppercase' }}>อีเมล (Email)</label>
-                 <input 
-                   type="email" 
-                   className="input" 
-                   value={formData.email} 
-                   onChange={e => setFormData({...formData, email: e.target.value})} 
-                   placeholder="example@sisandrich.com"
-                   style={{ background: '#F7FAFC', border: '1px solid #E2E8F0', height: '52px', borderRadius: '14px' }}
-                 />
-               </div>
-
                <div style={{ marginBottom: '24px', background: '#F7FAFC', padding: '20px', borderRadius: '16px', border: '1px solid #E2E8F0' }}>
-                 <label style={{ display: 'block', fontSize: '13px', fontWeight: '800', color: '#3182CE', marginBottom: '12px', textTransform: 'uppercase' }}>สิทธิ์การเข้าใช้งาน (Permissions)</label>
-                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                    {[
-                      { key: 'pos', label: 'ใช้งาน POS' },
-                      { key: 'inventory', label: 'จัดการสต็อกสินค้า' },
-                      { key: 'crm', label: 'จัดการลูกค้า (CRM)' },
-                      { key: 'reports', label: 'ดูรายงาน & Log' },
-                      { key: 'promotions', label: 'จัดการโปรโมชั่น' },
-                      { key: 'employees', label: 'จัดการทีมงาน' },
-                      { key: 'settings', label: 'ตั้งค่าระบบ' }
-                    ].map(perm => (
-                      <label key={perm.key} style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '13px', color: '#4A5568', cursor: 'pointer' }}>
-                        <input 
-                          type="checkbox" 
-                          checked={formData.permissions[perm.key]} 
-                          onChange={e => setFormData({
-                            ...formData, 
-                            permissions: { ...formData.permissions, [perm.key]: e.target.checked }
-                          })} 
-                        />
-                        {perm.label}
-                      </label>
-                    ))}
-                 </div>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: '800', color: '#3182CE', marginBottom: '12px', textTransform: 'uppercase' }}>การเข้าถึงระบบ (Permissions)</label>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px' }}>
+                     {[
+                       { key: 'pos', label: 'ใช้งาน POS' },
+                       { key: 'inventory', label: 'สต็อกสินค้า' },
+                       { key: 'crm', label: 'จัดการลูกค้า' },
+                       { key: 'reports', label: 'ดูรายงาน' },
+                       { key: 'employees', label: 'ทีมงาน' },
+                       { key: 'settings', label: 'ตั้งค่าระบบ' }
+                     ].map(perm => (
+                       <label key={perm.key} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', cursor: 'pointer' }}>
+                         <input type="checkbox" checked={formData.permissions[perm.key]} onChange={e => setFormData({...formData, permissions: { ...formData.permissions, [perm.key]: e.target.checked }})} />
+                         {perm.label}
+                       </label>
+                     ))}
+                  </div>
                </div>
 
                <div style={{ display: 'flex', gap: '12px' }}>
-                  <button type="button" className="btn btn-outline" style={{ flex: 1, height: '56px', borderRadius: '16px', fontWeight: 'bold' }} onClick={() => setIsModalOpen(false)}>ยกเลิก</button>
-                  <button type="submit" className="btn btn-primary" style={{ flex: 1, height: '56px', borderRadius: '16px', fontWeight: 'bold', background: '#2D3748' }}>บันทึกพนักงาน</button>
+                  <button type="button" className="btn btn-outline" style={{ flex: 1, height: '56px', borderRadius: '16px' }} onClick={() => setIsModalOpen(false)}>ยกเลิก</button>
+                  <button type="submit" className="btn btn-primary" style={{ flex: 1, height: '56px', borderRadius: '16px', background: '#2D3748' }}>เพิ่มพนักงาน</button>
                </div>
             </form>
           </div>
@@ -376,118 +346,50 @@ export default function Employees() {
       {/* --- EDIT MODAL --- */}
       {isEditModalOpen && editingEmployee && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(8px)' }}>
-          <div className="card animate-slide-in" style={{ width: '500px', background: 'white', padding: 0, borderRadius: '28px', overflow: 'hidden', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)' }}>
+          <div className="card animate-slide-in" style={{ width: '550px', background: 'white', padding: 0, borderRadius: '28px', overflow: 'hidden' }}>
             
-            {/* Modal Header */}
             <div style={{ padding: '24px 32px', background: 'linear-gradient(135deg, #4A5568 0%, #2D3748 100%)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-                  <div style={{ width: '48px', height: '48px', borderRadius: '14px', background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                     <Edit size={24} color="#FFFFFF" />
-                  </div>
-                  <div>
-                     <h3 style={{ fontSize: '20px', fontWeight: '900', color: '#FFFFFF' }}>แก้ไขข้อมูลพนักงาน</h3>
-                     <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.7)' }}>ID: {editingEmployee.id}</p>
-                  </div>
+                  <Edit size={24} color="#FFFFFF" />
+                  <h3 style={{ fontSize: '20px', fontWeight: '900', color: '#FFFFFF' }}>แก้ไขสิทธิ์พนักงาน</h3>
                </div>
-               <button onClick={() => setIsEditModalOpen(false)} style={{ border: 'none', background: 'rgba(255,255,255,0.1)', padding: '8px', borderRadius: '50%', color: 'white', cursor: 'pointer' }}>
-                  <X size={20}/>
-               </button>
+               <button onClick={() => setIsEditModalOpen(false)} style={{ border: 'none', background: 'rgba(255,255,255,0.1)', padding: '8px', borderRadius: '50%', color: 'white' }}><X size={20}/></button>
             </div>
 
             <form onSubmit={handleUpdateEmployee} style={{ padding: '32px' }}>
-               <div style={{ marginBottom: '20px' }}>
-                 <label style={{ display: 'block', fontSize: '13px', fontWeight: '800', color: '#4A5568', marginBottom: '8px', textTransform: 'uppercase' }}>ชื่อ-นามสกุล</label>
-                 <input 
-                   type="text" 
-                   className="input" 
-                   value={editingEmployee.name} 
-                   onChange={e => setEditingEmployee({...editingEmployee, name: e.target.value})} 
-                   required 
-                   style={{ background: '#F7FAFC', border: '1px solid #E2E8F0', height: '52px', borderRadius: '14px' }}
-                 />
-               </div>
-
                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '20px' }}>
                   <div>
-                    <label style={{ display: 'block', fontSize: '13px', fontWeight: '800', color: '#4A5568', marginBottom: '8px', textTransform: 'uppercase' }}>ตำแหน่ง</label>
-                    <select 
-                      className="input" 
-                      value={editingEmployee.role} 
-                      onChange={e => setEditingEmployee({...editingEmployee, role: e.target.value})}
-                      style={{ background: '#F7FAFC', border: '1px solid #E2E8F0', height: '52px', borderRadius: '14px' }}
-                    >
-                       <option value="Staff">Staff</option>
-                       <option value="Manager">Manager</option>
-                       <option value="Admin">Admin</option>
-                    </select>
+                    <label style={{ display: 'block', fontSize: '12px', fontWeight: '800', color: '#4A5568', marginBottom: '8px' }}>อีเมล</label>
+                    <input type="email" className="input" value={editingEmployee.email} onChange={e => setEditingEmployee({...editingEmployee, email: e.target.value})} style={{ background: '#F7FAFC', border: '1px solid #E2E8F0', height: '52px', borderRadius: '14px' }} />
                   </div>
                   <div>
-                    <label style={{ display: 'block', fontSize: '13px', fontWeight: '800', color: '#4A5568', marginBottom: '8px', textTransform: 'uppercase' }}>สถานะ</label>
-                    <select 
-                       className="input" 
-                       value={editingEmployee.status} 
-                       onChange={e => setEditingEmployee({...editingEmployee, status: e.target.value})}
-                       style={{ background: '#F7FAFC', border: '1px solid #E2E8F0', height: '52px', borderRadius: '14px' }}
-                    >
-                       <option value="Active">Active</option>
-                       <option value="On Leave">On Leave</option>
-                       <option value="Inactive">Inactive</option>
-                    </select>
+                    <label style={{ display: 'block', fontSize: '12px', fontWeight: '800', color: '#4A5568', marginBottom: '8px' }}>รหัสผ่านใหม่</label>
+                    <input type="text" className="input" value={editingEmployee.password || ''} onChange={e => setEditingEmployee({...editingEmployee, password: e.target.value})} placeholder="ว่าง=ไม่เปลี่ยน" style={{ background: '#F7FAFC', border: '1px solid #E2E8F0', height: '52px', borderRadius: '14px' }} />
                   </div>
-               </div>
-
-               <div style={{ marginBottom: '20px' }}>
-                 <label style={{ display: 'block', fontSize: '13px', fontWeight: '800', color: '#4A5568', marginBottom: '8px', textTransform: 'uppercase' }}>เบอร์โทรศัพท์</label>
-                 <input 
-                   type="tel" 
-                   className="input" 
-                   value={editingEmployee.phone} 
-                   onChange={e => setEditingEmployee({...editingEmployee, phone: e.target.value})} 
-                   style={{ background: '#F7FAFC', border: '1px solid #E2E8F0', height: '52px', borderRadius: '14px' }}
-                 />
-               </div>
-
-               <div style={{ marginBottom: '32px' }}>
-                 <label style={{ display: 'block', fontSize: '13px', fontWeight: '800', color: '#4A5568', marginBottom: '8px', textTransform: 'uppercase' }}>อีเมล</label>
-                 <input 
-                   type="email" 
-                   className="input" 
-                   value={editingEmployee.email} 
-                   onChange={e => setEditingEmployee({...editingEmployee, email: e.target.value})} 
-                   style={{ background: '#F7FAFC', border: '1px solid #E2E8F0', height: '52px', borderRadius: '14px' }}
-                 />
                </div>
 
                <div style={{ marginBottom: '24px', background: '#F7FAFC', padding: '20px', borderRadius: '16px', border: '1px solid #E2E8F0' }}>
-                 <label style={{ display: 'block', fontSize: '13px', fontWeight: '800', color: '#4A5568', marginBottom: '12px', textTransform: 'uppercase' }}>สิทธิ์การเข้าใช้งาน (Permissions)</label>
-                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                    {[
-                      { key: 'pos', label: 'ใช้งาน POS' },
-                      { key: 'inventory', label: 'จัดการสต็อกสินค้า' },
-                      { key: 'crm', label: 'จัดการลูกค้า (CRM)' },
-                      { key: 'reports', label: 'ดูรายงาน & Log' },
-                      { key: 'promotions', label: 'จัดการโปรโมชั่น' },
-                      { key: 'employees', label: 'จัดการทีมงาน' },
-                      { key: 'settings', label: 'ตั้งค่าระบบ' }
-                    ].map(perm => (
-                      <label key={perm.key} style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '13px', color: '#4A5568', cursor: 'pointer' }}>
-                        <input 
-                          type="checkbox" 
-                          checked={editingEmployee.permissions?.[perm.key] || false} 
-                          onChange={e => setEditingEmployee({
-                            ...editingEmployee, 
-                            permissions: { ...(editingEmployee.permissions || {}), [perm.key]: e.target.checked }
-                          })} 
-                        />
-                        {perm.label}
-                      </label>
-                    ))}
-                 </div>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: '800', color: '#4A5568', marginBottom: '12px' }}>สิทธิ์การเข้าใช้งาน</label>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px' }}>
+                     {[
+                       { key: 'pos', label: 'ใช้งาน POS' },
+                       { key: 'inventory', label: 'สต็อกสินค้า' },
+                       { key: 'crm', label: 'จัดการลูกค้า' },
+                       { key: 'reports', label: 'ดูรายงาน' },
+                       { key: 'employees', label: 'ทีมงาน' },
+                       { key: 'settings', label: 'ตั้งค่าระบบ' }
+                     ].map(perm => (
+                       <label key={perm.key} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', cursor: 'pointer' }}>
+                         <input type="checkbox" checked={editingEmployee.permissions?.[perm.key] || false} onChange={e => setEditingEmployee({...editingEmployee, permissions: { ...(editingEmployee.permissions || {}), [perm.key]: e.target.checked }})} />
+                         {perm.label}
+                       </label>
+                     ))}
+                  </div>
                </div>
 
                <div style={{ display: 'flex', gap: '12px' }}>
-                  <button type="button" className="btn btn-outline" style={{ flex: 1, height: '56px', borderRadius: '16px', fontWeight: 'bold' }} onClick={() => setIsEditModalOpen(false)}>ยกเลิก</button>
-                  <button type="submit" className="btn btn-primary" style={{ flex: 1, height: '56px', borderRadius: '16px', fontWeight: 'bold', background: '#3182CE' }}>อัปเดตข้อมูล</button>
+                  <button type="button" className="btn btn-outline" style={{ flex: 1, height: '56px', borderRadius: '16px' }} onClick={() => setIsEditModalOpen(false)}>ยกเลิก</button>
+                  <button type="submit" className="btn btn-primary" style={{ flex: 1, height: '56px', borderRadius: '16px', background: '#3182CE' }}>บันทึกข้อมูล</button>
                </div>
             </form>
           </div>

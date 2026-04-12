@@ -156,15 +156,25 @@ export default function ReceiptModal({ receiptData, onClose, onPrint }) {
             <span>{(receiptData.grandTotal || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
           </div>
 
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-            <span>Payment Cash</span>
-            <span>{(receiptData.totalPaid || receiptData.grandTotal || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
-          </div>
+          {/* Dynamic Payment Methods */}
+          {(receiptData.payments && receiptData.payments.length > 0) ? receiptData.payments.map((p, pIdx) => (
+            <div key={pIdx} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+              <span style={{ textTransform: 'capitalize' }}>
+                {p.method === 'cash' ? 'ชำระโดย เงินสด' : 
+                 p.method === 'transfer' ? 'ชำระโดย เงินโอน' : 
+                 p.method === 'storeCredit' ? 'ชำระโดย เครดิต (Wallet)' : 
+                 `ชำระโดย ${p.method}`}
+              </span>
+              <span>{(p.amount || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+            </div>
+          )) : (
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+              <span>Payment Cash</span>
+              <span>{(receiptData.totalPaid || receiptData.grandTotal || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+            </div>
+          )}
           
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-            <span>Debt</span>
-            <span>0.00</span>
-          </div>
+          <div style={{ borderTop: '1px dashed #000', margin: '5px 0' }}></div>
 
           <div style={{ display: 'flex', justifyContent: 'space-between' }}>
             <span>Change</span>
