@@ -9,7 +9,9 @@ export default function SalesHistory() {
   const [sales, setSales] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [dateFilter, setDateFilter] = useState('');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [isFetching, setIsFetching] = useState(false);
   
   const [selectedReceipt, setSelectedReceipt] = useState(null);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -28,6 +30,7 @@ export default function SalesHistory() {
   const ITEMS_PER_PAGE = 30;
 
   useEffect(() => {
+    // Initial load: Last 100 sales
     const q = query(collection(db, 'sales'), orderBy('timestamp', 'desc'), limit(100));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const fetchedSales = snapshot.docs.map(doc => ({
@@ -40,6 +43,41 @@ export default function SalesHistory() {
     });
     return () => unsubscribe();
   }, []);
+
+  const fetchSalesInRange = async () => {
+    if (!startDate || !endDate) return alert("กรุณาระบุช่วงวันที่ให้ครบถ้วน (Start & End Date)");
+    setLoading(true);
+    setIsFetching(true);
+    try {
+      const start = new Date(startDate);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(endDate);
+      end.setHours(23, 59, 59, 999);
+
+      const q = query(
+        collection(db, 'sales'),
+        where('timestamp', '>=', start),
+        where('timestamp', '<=', end),
+        orderBy('timestamp', 'desc')
+      );
+      const snap = await getDocs(query(q)); // Force execution
+      const fetched = snap.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        timestamp: doc.data().timestamp?.toDate() || new Date()
+      }));
+      setSales(fetched);
+    } catch (err) {
+      console.error(err);
+      if (err.message.includes('requires an index')) {
+        alert("ระบบต้องการการตั้งค่า Index เพิ่มเติม (Firestore Index). กรุณาติดต่อผู้ดูแลระบบหรือคลิกลิงก์ใน Console เพื่อสร้าง Index สำหรับช่วงวันที่");
+      } else {
+        alert("เกิดข้อผิดพลาดในการดึงข้อมูล: " + err.message);
+      }
+    }
+    setLoading(false);
+    setIsFetching(false);
+  };
 
   // Fetch active shift to allow quick reconciliation
   useEffect(() => {
@@ -98,35 +136,48 @@ export default function SalesHistory() {
 
       // 2. Adjust Shift Totals (Crucial!)
       if (editingSale.shiftId && oldMethod !== editForm.newMethod) {
-        const shiftRef = doc(db, 'shifts', editingSale.shiftId);
-        const shiftSnap = await getDoc(shiftRef);
-        
-        if (shiftSnap.exists()) {
-          const shiftData = shiftSnap.data();
-          const pms = shiftData.payments || { cash: 0, transfer: 0, credit: 0 };
+        try {
+          const shiftRef = doc(db, 'shifts', editingSale.shiftId);
+          const shiftSnap = await getDoc(shiftRef);
           
-          // Remove old amount
-          if (pms[oldMethod] !== undefined) pms[oldMethod] = (pms[oldMethod] || 0) - amount;
-          if (oldMethod === 'cash') shiftData.netCashSales = (shiftData.netCashSales || 0) - amount;
-          if (['transfer', 'online', 'promptpay'].includes(oldMethod)) {
-             shiftData.transferSales = (shiftData.transferSales || 0) - amount;
-          }
+          if (shiftSnap.exists()) {
+            const shiftData = shiftSnap.data();
+            const pms = shiftData.paymentSummary || shiftData.payments || {};
+            
+            // Standardize methods for logic
+            const stdOld = (['transfer', 'online', 'promptpay'].includes(oldMethod)) ? 'transfer' : 
+                            (['cash', 'เงินสด'].includes(oldMethod)) ? 'cash' : oldMethod;
+            const stdNew = (['transfer', 'online', 'promptpay'].includes(editForm.newMethod)) ? 'transfer' : 
+                            (['cash', 'เงินสด'].includes(editForm.newMethod)) ? 'cash' : editForm.newMethod;
 
-          // Add new amount
-          const targetMethod = editForm.newMethod;
-          pms[targetMethod] = (pms[targetMethod] || 0) + amount;
-          if (targetMethod === 'cash') shiftData.netCashSales = (shiftData.netCashSales || 0) + amount;
-          if (['transfer', 'online', 'promptpay'].includes(targetMethod)) {
-             shiftData.transferSales = (shiftData.transferSales || 0) + amount;
-          }
+            // Remove old amount from both summary and specific counters
+            if (pms[stdOld] !== undefined) pms[stdOld] = Math.max(0, (pms[stdOld] || 0) - amount);
+            if (stdOld === 'cash') {
+              shiftData.cashSales = Math.max(0, (shiftData.cashSales || 0) - amount);
+              shiftData.netCashSales = Math.max(0, (shiftData.netCashSales || 0) - amount);
+            }
+            if (stdOld === 'transfer') shiftData.transferSales = Math.max(0, (shiftData.transferSales || 0) - amount);
 
-          // Sync back to Firestore
-          await updateDoc(shiftRef, {
-            payments: pms,
-            netCashSales: shiftData.netCashSales || 0,
-            transferSales: shiftData.transferSales || 0,
-            endingCashSystem: (shiftData.startingCash || 0) + (shiftData.netCashSales || 0)
-          });
+            // Add new amount
+            pms[stdNew] = (pms[stdNew] || 0) + amount;
+            if (stdNew === 'cash') {
+              shiftData.cashSales = (shiftData.cashSales || 0) + amount;
+              shiftData.netCashSales = (shiftData.netCashSales || 0) + amount;
+            }
+            if (stdNew === 'transfer') shiftData.transferSales = (shiftData.transferSales || 0) + amount;
+
+            // Sync back to Firestore
+            await updateDoc(shiftRef, {
+              payments: pms,
+              paymentSummary: pms,
+              cashSales: shiftData.cashSales || 0,
+              netCashSales: shiftData.netCashSales || 0,
+              transferSales: shiftData.transferSales || 0,
+              endingCashSystem: (shiftData.startingCash || 0) + (shiftData.netCashSales || 0)
+            });
+          }
+        } catch (shiftErr) {
+          console.error("Failed to update shift during sale edit:", shiftErr);
         }
       }
 
@@ -211,16 +262,56 @@ export default function SalesHistory() {
         }
       }
 
-      // 4. System Audit Log
+      // 4. Update Shift Totals (If linked to a shift)
+      if (sale.shiftId) {
+        try {
+          const shiftRef = doc(db, 'shifts', sale.shiftId);
+          const shiftSnap = await getDoc(shiftRef);
+          if (shiftSnap.exists()) {
+            const shiftData = shiftSnap.data();
+            const amount = sale.grandTotal || 0;
+            const pms = shiftData.paymentSummary || shiftData.payments || {};
+
+            // Deduct each payment method used in the voided sale
+            (sale.payments || [{ method: sale.paymentMethod || 'cash', amount }]).forEach(p => {
+              const m = (p.method || 'cash').toLowerCase();
+              if (pms[m] !== undefined) pms[m] = Math.max(0, (pms[m] || 0) - p.amount);
+
+              if (m === 'cash') shiftData.netCashSales = Math.max(0, (shiftData.netCashSales || 0) - p.amount);
+              if (['transfer', 'online', 'promptpay'].includes(m)) {
+                shiftData.transferSales = Math.max(0, (shiftData.transferSales || 0) - p.amount);
+              }
+            });
+
+            await updateDoc(shiftRef, {
+              paymentSummary: pms,
+              payments: pms,
+              netCashSales: shiftData.netCashSales || 0,
+              transferSales: shiftData.transferSales || 0,
+              totalSales: Math.max(0, (shiftData.totalSales || 0) - amount),
+              netSales: Math.max(0, (shiftData.netSales || 0) - amount),
+              totalBills: Math.max(0, (shiftData.totalBills || 0) - 1),
+              voidedBills: increment(1),
+              totalItemsSold: Math.max(0, (shiftData.totalItemsSold || 0) - (sale.totalQty || 0)),
+              endingCashSystem: (shiftData.startingCash || 0) + (shiftData.netCashSales || 0)
+            });
+          }
+        } catch (shiftErr) {
+          console.error("Failed to update shift totals during void:", shiftErr);
+          // We don't block the whole void process if shift update fails, but we log it.
+        }
+      }
+
+      // 5. System Audit Log
       await addDoc(collection(db, 'system_logs'), {
         type: 'pos',
         action: 'ยกเลิกบิล (Void Bill)',
-        detail: `บิล ${sale.billId || sale.id.slice(0,8).toUpperCase()} ยอด ฿${(sale.grandTotal || 0).toLocaleString()}`,
+        detail: `บิล ${sale.billId || sale.id.slice(0, 8).toUpperCase()} ยอด ฿${(sale.grandTotal || 0).toLocaleString()}`,
         operator: 'Admin Staff',
         timestamp: serverTimestamp()
       });
 
-      alert('ยกเลิกบิลสำเร็จ คืนสต็อกเรียบร้อย');
+      alert('ยกเลิกบิลสำเร็จ คืนสต็อกและปรับปรุงยอดกะเรียบร้อย');
     } catch (err) {
       console.error(err);
       alert('เกิดข้อผิดพลาดในการยกเลิกบิล: ' + err.message);
@@ -230,8 +321,10 @@ export default function SalesHistory() {
   };
 
   const handleExport = () => {
+    if (filteredSales.length === 0) return alert("ไม่มีข้อมูลที่ตรงตามเงื่อนไขเพื่อส่งออก");
+    
     let csv = '\uFEFF'; 
-    csv += "วันที่,เวลา,รหัสบิล,ลูกค้า,พนักงานขาย,สถานะ,จำนวนชิ้นรวม,ยอดรวม(บาท),ลดราคาโปรโมชั่น(บาท),ภาษี(บาท),ยอดสุทธิ(บาท),รายการสินค้า\n";
+    csv += "วันที่,เวลา,รหัสบิล,ลูกค้า,พนักงานขาย,สถานะ,วิธีชำระ,จำนวนชิ้นรวม,ยอดรวม(บาท),ลดราคาโปรโมชั่น(บาท),ภาษี(บาท),ยอดสุทธิ(บาท),กำไรขั้นต้น(ประมาณการ),รายการสินค้า(SKU x QTY),รายละเอียดทั้งหมด\n";
     
     filteredSales.forEach(s => {
       const dDate = s.timestamp.toLocaleDateString('th-TH');
@@ -239,17 +332,33 @@ export default function SalesHistory() {
       const billId = s.billId || s.id.slice(0,8).toUpperCase();
       const customer = s.customer?.name || 'Walk-in';
       const seller = s.seller?.name || 'General Staff';
-      const status = s.status === 'voided' ? 'ยกเลิก' : 'สำเร็จ';
-      const itemsList = s.items?.map(i => `${i.name} [${i.qty} ชิ้น]`).join(' | ') || '';
+      const status = s.status === 'voided' ? 'ยกเลิก (VOID)' : 'สำเร็จ';
       
-      csv += `"${dDate}","${dTime}","${billId}","${customer}","${seller}","${status}","${s.totalQty}","${s.subTotal || 0}","${s.discountAmount || 0}","${s.tax || 0}","${s.grandTotal || 0}","${itemsList}"\n`;
+      const paymentMethods = s.payments?.map(p => {
+        let label = p.method;
+        if (p.method === 'cash') label = 'เงินสด';
+        else if (p.method === 'transfer') label = 'โอน';
+        else if (p.method === 'credit') label = 'บัตร';
+        else if (p.method === 'storeCredit') label = 'วอลเล็ท';
+        return `${label}${s.payments.length > 1 ? ` (฿${p.amount})` : ''}`;
+      }).join(' + ') || '-';
+
+      const itemsSimple = s.items?.map(i => `${i.name} [x${i.qty}]`).join('; ') || '';
+      const itemsFull = s.items?.map(i => `${i.name} (SKU: ${i.sku || '-'}) x${i.qty} @ ฿${i.price}`).join(' | ') || '';
+
+      // Estimate profit if cost was available
+      const totalCost = s.items?.reduce((acc, i) => acc + (i.costPrice * i.qty || 0), 0) || 0;
+      const profit = (s.grandTotal || 0) - totalCost;
+      
+      csv += `"${dDate}","${dTime}","${billId}","${customer}","${seller}","${status}","${paymentMethods}","${s.totalQty}","${s.subTotal || 0}","${s.discount || 0}","${s.tax || 0}","${s.grandTotal || 0}","${profit}","${itemsSimple}","${itemsFull}"\n`;
     });
     
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
+    const fileName = startDate && endDate ? `Sales_Full_Report_${startDate}_to_${endDate}.csv` : `Sales_History_Export_${new Date().toISOString().split('T')[0]}.csv`;
     a.href = url;
-    a.download = `Sales_Export_${new Date().toISOString().split('T')[0]}.csv`;
+    a.download = fileName;
     a.click();
   };
 
@@ -292,22 +401,22 @@ export default function SalesHistory() {
            (s.billId || '').toLowerCase().includes(term) ||
            (s.customer?.name || '').toLowerCase().includes(term) ||
            (s.seller?.name || '').toLowerCase().includes(term);
-           
-    let dateMatch = true;
-    if (dateFilter && s.timestamp) {
-      const year = s.timestamp.getFullYear();
-      const month = String(s.timestamp.getMonth() + 1).padStart(2, '0');
-      const day = String(s.timestamp.getDate()).padStart(2, '0');
-      dateMatch = `${year}-${month}-${day}` === dateFilter;
-    }
     
+    // Client-side quick filter for visual comfort (Real range filtering happens via fetchSalesInRange)
+    let dateMatch = true;
+    if (startDate && endDate && !isFetching) {
+      const sDate = new Date(startDate); sDate.setHours(0,0,0,0);
+      const eDate = new Date(endDate); eDate.setHours(23,59,59,999);
+      dateMatch = s.timestamp >= sDate && s.timestamp <= eDate;
+    }
+
     return searchMatch && dateMatch;
   });
 
   // Reset to page 1 when searching or filtering
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, dateFilter]);
+  }, [searchTerm, startDate, endDate]);
 
   // Pagination Logic
   const totalPages = Math.ceil(filteredSales.length / ITEMS_PER_PAGE);
@@ -349,10 +458,13 @@ export default function SalesHistory() {
         </div>
       </div>
 
-      <div className="card" style={{ padding: '20px', background: 'white', marginBottom: '24px' }}>
-        <div style={{ flex: 1, display: 'flex', gap: '16px', maxWidth: '800px' }}>
-          <div style={{ flex: 2 }}>
-            <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#4A5568', marginBottom: '8px' }}>ค้นหา (Search)</label>
+      <div className="card" style={{ padding: '24px', background: 'white', marginBottom: '24px', border: '1px solid #E2E8F0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}>
+        <div style={{ display: 'flex', gap: '20px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
+          
+          <div style={{ flex: 2, minWidth: '300px' }}>
+            <label style={{ display: 'block', fontSize: '13px', fontWeight: '800', color: '#1A202C', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+              🔍 ค้นหาบิล (Search)
+            </label>
             <div className="input-icon-wrapper" style={{ margin: 0 }}>
               <Search className="icon" size={18} />
               <input 
@@ -361,22 +473,80 @@ export default function SalesHistory() {
                 placeholder="รหัสบิล, ชื่อลูกค้า, ชื่อเซลล์..." 
                 value={searchTerm} 
                 onChange={e => setSearchTerm(e.target.value)} 
-                style={{ margin: 0 }}
+                style={{ margin: 0, borderRadius: '10px' }}
               />
             </div>
           </div>
           
-          <div style={{ flex: 1 }}>
-            <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#4A5568', marginBottom: '8px' }}>วันที่ (Date)</label>
-            <input 
-              type="date" 
-              className="input" 
-              value={dateFilter} 
-              onChange={e => setDateFilter(e.target.value)} 
-              style={{ margin: 0 }}
-            />
+          <div style={{ flex: 1.5, display: 'flex', gap: '10px', minWidth: '320px' }}>
+            <div style={{ flex: 1 }}>
+              <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#4A5568', marginBottom: '8px' }}>เริ่ม (Start Date)</label>
+              <input 
+                type="date" 
+                className="input" 
+                value={startDate} 
+                onChange={e => setStartDate(e.target.value)} 
+                style={{ margin: 0, borderRadius: '10px' }}
+              />
+            </div>
+            <div style={{ flex: 1 }}>
+              <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#4A5568', marginBottom: '8px' }}>ถึง (End Date)</label>
+              <input 
+                type="date" 
+                className="input" 
+                value={endDate} 
+                onChange={e => setEndDate(e.target.value)} 
+                style={{ margin: 0, borderRadius: '10px' }}
+              />
+            </div>
           </div>
+
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button 
+              className="btn" 
+              onClick={fetchSalesInRange}
+              disabled={loading || !startDate || !endDate}
+              style={{ 
+                background: '#2B6CB0', 
+                color: 'white', 
+                padding: '10px 20px', 
+                borderRadius: '10px',
+                fontWeight: 'bold',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}
+            >
+              {loading && isFetching ? <RefreshCw size={16} className="animate-spin" /> : <Search size={16} />}
+              ดึงข้อมูลตามช่วง
+            </button>
+
+            <button 
+              className="btn"
+              onClick={handleExport}
+              disabled={filteredSales.length === 0}
+              style={{ 
+                background: '#38A169', 
+                color: 'white', 
+                padding: '10px 20px', 
+                borderRadius: '10px',
+                fontWeight: 'bold',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}
+            >
+              <Download size={16} />
+              ส่งออก Excel (CSV)
+            </button>
+          </div>
+
         </div>
+        {(startDate || endDate) && (
+           <div style={{ marginTop: '12px', fontSize: '12px', color: '#718096', fontStyle: 'italic' }}>
+              * ข้อมูลที่แสดงในรายการอาจมีจำนวนจำกัด กรุณากด "ดึงข้อมูลตามช่วง" เพื่อดูข้อมูลละเอียดทั้งหมด
+           </div>
+        )}
       </div>
 
       <div className="card" style={{ flex: 1, padding: '0', background: 'white', overflowY: 'auto' }}>
@@ -387,6 +557,7 @@ export default function SalesHistory() {
               <th style={{ padding: '16px' }}>รหัสบิล (Bill ID)</th>
               <th style={{ padding: '16px' }}>ลูกค้า (Customer)</th>
               <th style={{ padding: '16px' }}>ยอดรวม (Total)</th>
+              <th style={{ padding: '16px' }}>ชำระโดย (Payment)</th>
               <th style={{ padding: '16px' }}>สถานะ (Status)</th>
               <th style={{ padding: '16px', textAlign: 'center' }}>จัดการ (Action)</th>
             </tr>
@@ -412,6 +583,43 @@ export default function SalesHistory() {
                 <td style={{ padding: '14px 16px', fontSize: '14px', fontWeight: 'bold', color: '#2D3748' }}>
                   ฿{(sale.grandTotal || 0).toLocaleString()}
                   <div style={{ fontSize: '11px', color: '#718096', fontWeight: 'normal' }}>{sale.totalQty} items</div>
+                </td>
+                <td style={{ padding: '14px 16px' }}>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                    {sale.payments && sale.payments.length > 0 ? (
+                      sale.payments.map((p, idx) => {
+                        let label = p.method;
+                        let emoji = '💰';
+                        let color = '#718096';
+                        let bg = '#F7FAFC';
+
+                        if (p.method === 'cash') { label = 'เงินสด'; emoji = '💵'; color = '#38A169'; bg = '#F0FFF4'; }
+                        else if (p.method === 'transfer') { label = 'โอน'; emoji = '📱'; color = '#3182CE'; bg = '#EBF8FF'; }
+                        else if (p.method === 'credit') { label = 'บัตร'; emoji = '💳'; color = '#805AD5'; bg = '#F5F3FF'; }
+                        else if (p.method === 'storeCredit') { label = 'วอลเล็ท'; emoji = '👛'; color = '#DD6B20'; bg = '#FFFAF0'; }
+
+                        return (
+                          <span key={idx} style={{ 
+                            display: 'inline-flex', 
+                            alignItems: 'center', 
+                            gap: '4px', 
+                            background: bg, 
+                            color: color, 
+                            padding: '2px 8px', 
+                            borderRadius: '12px', 
+                            fontSize: '11px', 
+                            fontWeight: 'bold',
+                            border: `1px solid ${color}20`
+                          }}>
+                            {emoji} {label}
+                            {sale.payments.length > 1 && <span style={{ opacity: 0.8, fontSize: '10px' }}> (฿{p.amount.toLocaleString()})</span>}
+                          </span>
+                        );
+                      })
+                    ) : (
+                      <span style={{ fontSize: '11px', color: '#A0AEC0' }}>-</span>
+                    )}
+                  </div>
                 </td>
                 <td style={{ 
                   padding: '14px 16px', 

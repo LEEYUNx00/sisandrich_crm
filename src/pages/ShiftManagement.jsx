@@ -7,7 +7,7 @@ import {
 } from 'firebase/firestore';
 import {
   Clock, DollarSign, TrendingUp, TrendingDown, Lock, Unlock,
-  Printer, Plus, Minus, AlertCircle, CheckCircle, FileText, RefreshCw, X, Users
+  Printer, Plus, Minus, AlertCircle, CheckCircle, FileText, RefreshCw, X, Users, Copy
 } from 'lucide-react';
 
 export default function ShiftManagement() {
@@ -57,17 +57,10 @@ export default function ShiftManagement() {
         const shift = { id: snap.docs[0].id, ...snap.docs[0].data() };
         setActiveShift(shift);
 
-        // Load cash movements
+        // Load cash movements (one-time fetch or separate listener if needed)
         const movesRef = collection(db, 'shifts', shift.id, 'cashMoves');
         const moveQ = query(movesRef, orderBy('createdAt', 'asc'));
         getDocs(moveQ).then(ms => setCashMoves(ms.docs.map(d => ({ id: d.id, ...d.data() }))));
-
-        // Load sales for this shift
-        const salesQ = query(
-          collection(db, 'sales'),
-          where('shiftId', '==', shift.id)
-        );
-        getDocs(salesQ).then(ss => setShiftSales(ss.docs.map(d => ({ id: d.id, ...d.data() }))));
       } else {
         setActiveShift(null);
       }
@@ -79,6 +72,27 @@ export default function ShiftManagement() {
     });
     return () => unsub();
   }, []);
+
+  // 1.2 Monitor sales for ACTIVE shift (Live Update)
+  useEffect(() => {
+    if (!activeShift?.id) {
+      setShiftSales([]);
+      return;
+    }
+
+    const salesQ = query(
+      collection(db, 'sales'),
+      where('shiftId', '==', activeShift.id)
+    );
+
+    const unsubSales = onSnapshot(salesQ, (ss) => {
+      setShiftSales(ss.docs.map(d => ({ id: d.id, ...d.data() })));
+    }, (err) => {
+      console.error("Sales listener error:", err);
+    });
+
+    return () => unsubSales();
+  }, [activeShift?.id]);
 
   // Load shift history
   useEffect(() => {
@@ -110,13 +124,16 @@ export default function ShiftManagement() {
   // 1.5. Listen for Orphan Sales (No shiftId)
   // ───────────────────────────────────────────────
   useEffect(() => {
+    // ค้นหาสินค้าที่หลุดกะ (ไม่มี shiftId) โดยใช้ Query ง่ายๆ เพื่อเลี่ยงการสร้าง Index
     const q = query(
       collection(db, 'sales'),
-      where('shiftId', '==', null),
-      where('status', '!=', 'voided')
+      where('shiftId', '==', null)
     );
     const unsub = onSnapshot(q, (snap) => {
-      const sales = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      // กรองสถานะ voided ออกในฝั่ง Client
+      const sales = snap.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .filter(s => s.status !== 'voided');
       setOrphanSales(sales);
     });
     return () => unsub();
@@ -257,7 +274,9 @@ export default function ShiftManagement() {
         topItem: summary.topItem,
         totalItemsSold: summary.totalItemsSold,
         avgPricePerItem: summary.avgPricePerItem,
+        avgPricePerItem: summary.avgPricePerItem,
         totalInvestment: summary.totalInvestment,
+        cashSales: summary.cashSales, // เก็บยอดขายเงินสด (Revenue) แทนยอดถอน
         netCashSales: summary.netCashSales,
         transferSales: summary.transferSales,
       });
@@ -295,6 +314,60 @@ export default function ShiftManagement() {
     setFetchingDetails(false);
   };
 
+  const handleCopyShiftSummary = async (shift) => {
+    try {
+      const pms = shift.paymentSummary || shift.payments || {};
+      const cash = pms.cash || 0;
+      const transfer = pms.transfer || 0;
+      
+      const pTypesLine = [
+        { label: '💵 现金 / เงินสด', val: cash },
+        { label: '📱 转账 / เงินโอน', val: transfer }
+      ];
+      
+      Object.entries(pms).forEach(([k, v]) => {
+        const lowerK = k.toLowerCase();
+        if (!['cash', 'transfer', 'netcashsales'].includes(lowerK) && v > 0) {
+           let icon = '💳';
+           if (lowerK.includes('credit')) icon = '💳';
+           if (lowerK.includes('gift')) icon = '🎁';
+           pTypesLine.push({ label: `${icon} ${k}`, val: v });
+        }
+      });
+
+      const text = `📊 每日营业额报告 | สรุปยอดขายประจำกะ 📊
+📅 日期 / วันที่: ${shift.openedAt?.toDate?.().toLocaleDateString('th-TH')}
+👤 操作员 / พนักงาน: ${shift.openedBy}
+
+${pTypesLine.map(p => `${p.label}: ฿${p.val.toLocaleString()}`).join('\n')}
+---
+💰 总计 / รวมสุทธิ: ฿${(shift.netSales || 0).toLocaleString()}
+
+🛍️ 总商品数 / รวมสินค้า: ${shift.totalItemsSold || 0} 件
+📈 平均单价 / ราคาเฉลี่ย: ฿${Math.round((shift.netSales || 0) / (shift.totalItemsSold || 1))}`;
+
+      // 📋 ระบบคัดลอก (รองรับทั้ง HTTPS และ HTTP/Local IP)
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const textArea = document.createElement("textarea");
+        textArea.value = text;
+        document.body.appendChild(textArea);
+        textArea.select();
+        try {
+          document.execCommand('copy');
+        } catch (err) {
+          console.error('Fallback copy failed', err);
+        }
+        document.body.removeChild(textArea);
+      }
+      
+      alert('คัดลอกรายงานสรุปเรียบร้อยแล้ว! 📋');
+    } catch (err) {
+      alert("ไม่สามารถคัดลอกได้: " + err.message);
+    }
+  };
+
   // ───────────────────────────────────────────────
   // 5. Calculate Summary
   // ───────────────────────────────────────────────
@@ -303,20 +376,55 @@ export default function ShiftManagement() {
     const voidedSales = shiftSales.filter(s => s.status === 'voided');
 
     const grossSales = completedSales.reduce((acc, s) => acc + (s.subTotal || s.grandTotal || 0), 0);
-    const discount = completedSales.reduce((acc, s) => acc + (s.discountAmount || 0), 0);
+    const discount = completedSales.reduce((acc, s) => acc + (s.discount || 0), 0);
     const netSales = completedSales.reduce((acc, s) => acc + (s.grandTotal || 0), 0);
 
-    // Payment breakdown
-    const payments = {};
+    const payments = { cash: 0, transfer: 0, credit: 0, storeCredit: 0, other: 0 };
     completedSales.forEach(s => {
-      (s.payments || [{ method: s.paymentMethod || 'cash', amount: s.grandTotal }]).forEach(p => {
-        const method = (p.method || 'cash').toLowerCase();
-        payments[method] = (payments[method] || 0) + (p.amount || 0);
-      });
+      const gTotal = s.grandTotal || 0;
+      
+      // 💳 ดึงข้อมูลการชำระเงิน (เน้นความถูกต้องและกันยอดเบิ้ล)
+      if (s.payments && s.payments.length > 0) {
+        let pSum = 0;
+        s.payments.forEach(p => {
+          let rawM = String(p.method || 'cash').trim().toLowerCase();
+          let amount = p.amount || 0;
+          let method = 'other';
+
+          if (['cash', 'เงินสด', 'สด'].some(a => rawM === a)) method = 'cash';
+          else if (['transfer', 'โอน', 'โอนเงิน', 'mobile', 'promptpay', 'qr'].some(a => rawM.includes(a))) method = 'transfer';
+          else if (['credit', 'บัตรเครดิต', 'บัตร'].some(a => rawM.includes(a))) method = 'credit';
+          else if (['storecredit', 'wallet', 'วอลเล็ท'].some(a => rawM.includes(a))) method = 'storeCredit';
+
+          // กันเหนียว: ถ้ายอดใน payment รวมแล้วเกิน Grand Total ให้ปัดเท่าแค่ Grand Total
+          if (pSum + amount > gTotal) amount = Math.max(0, gTotal - pSum);
+          
+          payments[method] += amount;
+          pSum += amount;
+        });
+
+        // หากผลรวม payment ยังน้อยกว่า Grand Total (เช่น ข้ามไปบางส่วน) ให้ลงที่วิธีหลัก
+        if (pSum < gTotal) {
+          const mainM = String(s.paymentMethod || 'cash').toLowerCase();
+          const remains = gTotal - pSum;
+          if (['cash', 'เงินสด', 'สด'].some(a => mainM === a)) payments['cash'] += remains;
+          else if (['transfer', 'โอน', 'โอนเงิน', 'mobile', 'promptpay'].some(a => mainM.includes(a))) payments['transfer'] += remains;
+          else payments['other'] += remains;
+        }
+      } else {
+        // ไม่มีอาร์เรย์ payments ให้ใช้ฟิลด์หลักโดยตรง (ปลอดภัยที่สุด)
+        let rawM = String(s.paymentMethod || 'cash').trim().toLowerCase();
+        let method = 'other';
+        if (['cash', 'เงินสด', 'สด'].some(a => rawM === a)) method = 'cash';
+        else if (['transfer', 'โอน', 'โอนเงิน', 'mobile', 'promptpay'].some(a => rawM.includes(a))) method = 'transfer';
+        else if (['credit', 'บัตรเครดิต', 'บัตร'].some(a => rawM.includes(a))) method = 'credit';
+        
+        payments[method] += gTotal;
+      }
     });
 
-    const cashSales = payments['cash'] || payments['เงินสด'] || 0;
-    const transferSales = payments['transfer'] || payments['โอนเงิน'] || 0;
+    const cashSales = payments['cash'] || 0;
+    const transferSales = payments['transfer'] || 0;
     const startingCash = activeShift?.startingCash || 0;
     const cashIn = activeShift?.cashIn || 0;
     const cashOut = activeShift?.cashOut || 0;
@@ -879,9 +987,44 @@ export default function ShiftManagement() {
                         <div style={{ fontSize: '11px', color: '#A0AEC0' }}>→ {shift.closedBy || '-'}</div>
                       </td>
                       <td style={{ padding: '12px', textAlign: 'right' }}>
-                        <div style={{ fontSize: '12px' }}>ทุน: ฿{(shift.totalInvestment || 0).toLocaleString()}</div>
-                        <div style={{ fontSize: '12px', color: '#38A169' }}>สด: ฿{(shift.netCashSales || 0).toLocaleString()}</div>
-                        <div style={{ fontSize: '12px', color: '#805AD5' }}>โอน: ฿{(shift.transferSales || 0).toLocaleString()}</div>
+                        {(() => {
+                          const pms = shift.paymentSummary || shift.payments || {};
+                          
+                          // ฟังก์ชันค้นหายอดที่แม่นยำขึ้น
+                          const getAmt = (keys) => {
+                            const entry = Object.entries(pms).find(([k]) => 
+                              keys.some(t => k.toLowerCase() === t.toLowerCase() || k.toLowerCase().trim() === t.toLowerCase())
+                            );
+                            return entry ? entry[1] : 0;
+                          };
+
+                          // ค้นหายอดตามช่องทางต่างๆ (ดรอปรายการที่ยอดเป็น 0)
+                          const pTypes = [
+                            { keys: ['cash', 'เงินสด', 'สด'], label: 'สด', color: '#38A169' },
+                            { keys: ['transfer', 'โอน', 'โอนเงิน', 'promptpay', 'mobile'], label: 'โอน', color: '#805AD5' },
+                            { keys: ['credit', 'บัตรเครดิต', 'บัตร'], label: 'เครดิต', color: '#3182CE' },
+                            { keys: ['debit', 'บัตรเดบิต'], label: 'เดบิต', color: '#2B6CB0' },
+                            { keys: ['voucher', 'บัตรกำนัล', 'gift'], label: 'บัตรกำนัล', color: '#DD6B20' },
+                            { keys: ['online', 'mbanking'], label: 'ออนไลน์', color: '#00A3C4' },
+                            { keys: ['other', 'อื่นๆ'], label: 'อื่นๆ', color: '#718096' }
+                          ];
+
+                          const activePayments = pTypes.map(pt => {
+                            const amt = getAmt(pt.keys);
+                            return { ...pt, amt };
+                          }).filter(pt => pt.amt > 0);
+
+                          return (
+                            <>
+                              <div style={{ fontSize: '11px', color: '#718096', marginBottom: '2px' }}>ทุน: ฿{(shift.totalInvestment || (shift.startingCash + (shift.cashIn || 0))).toLocaleString()}</div>
+                              {activePayments.map(pt => (
+                                <div key={pt.label} style={{ fontSize: '12px', color: pt.color, fontWeight: 'bold' }}>
+                                   {pt.label}: ฿{pt.amt.toLocaleString()}
+                                </div>
+                              ))}
+                            </>
+                          );
+                        })()}
                       </td>
                       <td style={{ padding: '12px', textAlign: 'right' }}>
                         <div style={{ fontWeight: 'bold', fontSize: '15px', color: '#2D3748' }}>฿{(shift.netSales || 0).toLocaleString()}</div>
@@ -906,9 +1049,23 @@ export default function ShiftManagement() {
                         <div style={{ fontSize: '11px', color: '#CBD5E0' }}>นับจริง: ฿{(shift.endingCashEmp || 0).toLocaleString()}</div>
                       </td>
                       <td style={{ padding: '12px', textAlign: 'center' }}>
-                        <button className="btn btn-outline" style={{ padding: '6px 10px', fontSize: '11px' }} onClick={() => handleViewShiftDetails(shift)}>
-                          🔍 ดูละเอียด
-                        </button>
+                        <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
+                          <button 
+                            className="btn btn-outline" 
+                            style={{ padding: '6px 10px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }} 
+                            onClick={() => handleViewShiftDetails(shift)}
+                          >
+                            🔍 ดูละเอียด
+                          </button>
+                          <button 
+                            className="btn" 
+                            style={{ padding: '6px 10px', fontSize: '11px', background: '#4A5568', color: 'white', display: 'flex', alignItems: 'center', gap: '4px' }} 
+                            onClick={() => handleCopyShiftSummary(shift)}
+                            title="คัดลอกสรุปรายวัน (ไทย-จีน)"
+                          >
+                            <Copy size={12} /> คัดลอก
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -948,13 +1105,21 @@ export default function ShiftManagement() {
                   
                   {/* Revenue Source */}
                   <div className="card" style={{ borderTop: '4px solid #3182CE' }}>
-                    <h4 style={{ fontWeight: 'bold', marginBottom: '16px', color: '#2D3748' }}>💰 วิเคราะห์รายได้</h4>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                      <FlexRow label="ยอดขายรวม (Net)" value={`฿${selectedShiftData?.netSales?.toLocaleString()}`} bold />
-                      <FlexRow label="จำนวนบิลทั้งหมด" value={`${selectedShiftData?.totalBills} บิล`} />
-                      <FlexRow label="เฉลี่ยต่อบิล" value={`฿${Math.round(selectedShiftData?.netSales / selectedShiftData?.totalBills || 0).toLocaleString()}`} />
-                      <FlexRow label="ส่วนลดรวม" value={`฿${selectedShiftData?.discount?.toLocaleString()}`} color="#E53E3E" />
-                    </div>
+                    <h4 style={{ fontWeight: 'bold', marginBottom: '16px', color: '#2D3748' }}>💰 วิเคราะห์รายได้ (Live)</h4>
+                    {(() => {
+                      const completedSales = detailedSales.filter(s => s.status !== 'voided');
+                      const netSales = completedSales.reduce((acc, s) => acc + (s.grandTotal || 0), 0);
+                      const totalBills = completedSales.length;
+                      const discount = completedSales.reduce((acc, s) => acc + (s.discount || 0), 0);
+                      return (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                          <FlexRow label="ยอดขายรวม (Net)" value={`฿${netSales.toLocaleString()}`} bold />
+                          <FlexRow label="จำนวนบิลทั้งหมด" value={`${totalBills} บิล`} />
+                          <FlexRow label="เฉลี่ยต่อบิล" value={`฿${Math.round(netSales / totalBills || 0).toLocaleString()}`} />
+                          <FlexRow label="ส่วนลดรวม" value={`฿${discount.toLocaleString()}`} color="#E53E3E" />
+                        </div>
+                      );
+                    })()}
                   </div>
 
                   {/* Customer Segment */}
@@ -981,20 +1146,24 @@ export default function ShiftManagement() {
 
                   {/* Trends */}
                   <div className="card" style={{ borderTop: '4px solid #D69E2E' }}>
-                    <h4 style={{ fontWeight: 'bold', marginBottom: '16px', color: '#2D3748' }}>📈 แนวโน้มการขาย (Trends)</h4>
+                    <h4 style={{ fontWeight: 'bold', marginBottom: '16px', color: '#2D3748' }}>📈 แนวโน้มการขาย (Live)</h4>
                     {(() => {
+                      const completedSales = detailedSales.filter(s => s.status !== 'voided');
+                      const totalItems = completedSales.reduce((acc, s) => acc + (s.totalQty || s.items?.reduce((a, i) => a + i.qty, 0) || 0), 0);
+                      const netSales = completedSales.reduce((acc, s) => acc + (s.grandTotal || 0), 0);
+                      
                       const hourly = {};
-                      detailedSales.forEach(s => {
+                      completedSales.forEach(s => {
                         const h = s.timestamp?.toDate?.().getHours();
                         if (h !== undefined) hourly[h] = (hourly[h] || 0) + 1;
                       });
                       const peakHour = Object.entries(hourly).sort((a,b) => b[1] - a[1])[0];
                       return (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                          <FlexRow label="จำนวนสินค้าที่ขายได้" value={`${selectedShiftData?.totalItemsSold || 0} ชิ้น`} />
-                          <FlexRow label="ราคาเฉลี่ยสินค้า" value={`฿${Math.round(selectedShiftData?.avgPricePerItem || 0)}`} />
+                          <FlexRow label="จำนวนสินค้าที่ขายได้" value={`${totalItems} ชิ้น`} />
+                          <FlexRow label="ราคาเฉลี่ยสินค้า" value={`฿${Math.round(netSales / totalItems || 0)}`} />
                           <FlexRow label="ช่วงเวลา Peak" value={peakHour ? `${peakHour[0]}:00 - ${Number(peakHour[0])+1}:00` : '-'} color="#D69E2E" bold />
-                          <p style={{ fontSize: '11px', color: '#718096' }}>* ช่วงเวลานี้มีลูกค้าเข้าร้านหนาแน่นที่สุด</p>
+                          <p style={{ fontSize: '11px', color: '#718096' }}>* ช่วงเวลานี้มีการเปิดบิลหนาแน่นที่สุด</p>
                         </div>
                       )
                     })()}
@@ -1047,19 +1216,93 @@ export default function ShiftManagement() {
                     </div>
 
                     {/* Payment Distribution */}
-                    <div className="card" style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                       <div style={{ fontSize: '12px', color: '#718096', marginBottom: '8px' }}>💳 ช่องทางชำระเงิน</div>
-                       {(() => {
-                          const cashP = (selectedShiftData?.netCashSales / selectedShiftData?.netSales) * 100 || 0;
-                          const transferP = (selectedShiftData?.transferSales / selectedShiftData?.netSales) * 100 || 0;
-                          return (
-                            <>
-                              <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#38A169' }}>สด {Math.round(cashP)}%</div>
-                              <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#805AD5' }}>โอน {Math.round(transferP)}%</div>
-                              <div style={{ fontSize: '10px', color: '#A0AEC0', marginTop: '10px' }}>* สัดส่วนยอดเงินที่ได้รับ</div>
-                            </>
-                          )
-                       })()}
+                    <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '8px', position: 'relative' }}>
+                       <div style={{ fontSize: '12px', color: '#718096', marginBottom: '4px', textAlign: 'center' }}>💳 ช่องทางชำระเงิน (Detailed)</div>
+                       <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                          {(() => {
+                            const pms = { cash: 0, transfer: 0, credit: 0, debit: 0, voucher: 0, online: 0, other: 0 };
+                            detailedSales.filter(s => s.status !== 'voided').forEach(s => {
+                              const gTotal = s.grandTotal || 0;
+                              const salePayments = (s.payments && s.payments.length > 0) 
+                                ? s.payments 
+                                : [{ method: s.paymentMethod || 'cash', amount: gTotal }];
+                              
+                              let pSum = 0;
+                              salePayments.forEach(p => {
+                                let rawM = String(p.method || 'cash').trim().toLowerCase();
+                                let amt = p.amount || 0;
+                                let method = 'other';
+                                
+                                if (['cash', 'เงินสด', 'สด'].some(a => rawM === a)) method = 'cash';
+                                else if (['transfer', 'โอน', 'โอนเงิน', 'promptpay'].some(a => rawM.includes(a))) method = 'transfer';
+                                else if (['credit', 'บัตรเครดิต', 'บัตร'].some(a => rawM.includes(a))) method = 'credit';
+                                else if (['debit', 'บัตรเดบิต'].some(a => rawM.includes(a))) method = 'debit';
+                                else if (['voucher', 'บัตรกำนัล', 'gift'].some(a => rawM.includes(a))) method = 'voucher';
+                                else if (['online', 'mbanking', 'mobile'].some(a => rawM.includes(a))) method = 'online';
+
+                                if (pSum + amt > gTotal) amt = Math.max(0, gTotal - pSum);
+                                pms[method] = (pms[method] || 0) + amt;
+                                pSum += amt;
+                              });
+                            });
+
+                            // ตรวจสอบความคลาดเคลื่อนกับยอดที่บันทึกไว้ใน Doc
+                            const savedCash = selectedShiftData?.cashSales || 0;
+                            const isMismatch = Math.abs(pms.cash - savedCash) > 5; // ต่างกันเกิน 5 บาท
+
+                            const handleFix = async () => {
+                              if (!selectedShiftData || processing) return;
+                              setProcessing(true);
+                              try {
+                                await updateDoc(doc(db, 'shifts', selectedShiftData.id), {
+                                  paymentSummary: pms,
+                                  payments: pms,
+                                  cashSales: pms.cash,
+                                  transferSales: pms.transfer,
+                                  netCashSales: pms.cash,
+                                  reconciledAt: serverTimestamp()
+                                });
+                                alert("ซ่อมแซมและซิงก์ข้อมูลเรียบร้อย!");
+                                setSelectedShiftId(null);
+                              } catch (err) {
+                                alert("Error: " + err.message);
+                              } finally {
+                                setProcessing(false);
+                              }
+                            };
+
+                            return (
+                              <>
+                                {[
+                                  { key: 'cash', label: 'เงินสด (Cash)', color: '#38A169' },
+                                  { key: 'transfer', label: 'โอนเงิน (Transfer)', color: '#805AD5' },
+                                  { key: 'credit', label: 'บัตรเครดิต (Credit)', color: '#3182CE' },
+                                  { key: 'debit', label: 'บัตรเดบิต (Debit)', color: '#2B6CB0' },
+                                  { key: 'voucher', label: 'บัตรกำนัล / Gift', color: '#DD6B20' },
+                                  { key: 'online', label: 'ออนไลน์ / MBanking', color: '#00A3C4' },
+                                  { key: 'other', label: 'อื่นๆ (Other)', color: '#718096' }
+                                ].map(({ key, label, color }) => (
+                                  <div key={key} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', borderBottom: '1px solid #EDF2F7', paddingBottom: '2px' }}>
+                                    <span style={{ color: '#4A5568' }}>{label}</span>
+                                    <span style={{ fontWeight: 'bold', color: pms[key] > 0 ? color : '#CBD5E0' }}>฿{pms[key].toLocaleString()}</span>
+                                  </div>
+                                ))}
+
+                                {isMismatch && !processing && (
+                                   <button 
+                                     onClick={handleFix}
+                                     style={{ 
+                                       marginTop: '10px', width: '100%', padding: '8px', 
+                                       borderRadius: '6px', background: '#E53E3E', color: 'white', 
+                                       fontSize: '10px', fontWeight: 'bold', border: 'none', cursor: 'pointer'
+                                     }}>
+                                     ⚠️ พบข้อมูลไม่ตรง! กดเพื่อซ่อมแซม
+                                   </button>
+                                )}
+                              </>
+                            );
+                          })()}
+                       </div>
                     </div>
 
                   </div>

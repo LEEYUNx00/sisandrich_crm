@@ -1,28 +1,37 @@
 
-import { initializeApp } from "firebase/app";
-import { getFirestore, collection, getDocs } from "firebase/firestore";
+import { db } from '../firebase';
+import { doc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
 
-const firebaseConfig = {
-  apiKey: "AIzaSyA1BuDDAyPD1dZoB0PZnd04MeJ7McTZ3cc",
-  authDomain: "sisandrichcrm.firebaseapp.com",
-  projectId: "sisandrichcrm",
-  storageBucket: "sisandrichcrm.firebasestorage.app",
-  messagingSenderId: "174596544744",
-  appId: "1:174596544744:web:1eb3466914f30894aa915d",
-  measurementId: "G-58BBHSRVTY"
-};
-
-const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
-
-async function inspectRaw() {
-  const q = collection(db, 'sales');
-  const snap = await getDocs(q);
-  console.log("Found " + snap.docs.length + " sales total.");
-  if (snap.docs.length > 0) {
-    console.log("Sample Data from first doc:");
-    console.log(JSON.stringify(snap.docs[0].data(), null, 2));
+async function inspect() {
+  const shiftId = '110469-1'; // ID from screenshot
+  const shiftRef = doc(db, 'shifts', shiftId);
+  const snap = await getDoc(shiftRef);
+  
+  if (snap.exists()) {
+    console.log("SHIFT DATA:", JSON.stringify(snap.data(), null, 2));
+    
+    const salesQ = query(collection(db, 'sales'), where('shiftId', '==', shiftId));
+    const salesSnap = await getDocs(salesQ);
+    const sales = salesSnap.docs.map(d => d.data());
+    
+    const totalGrand = sales.filter(s => s.status !== 'voided').reduce((acc, s) => acc + (s.grandTotal || 0), 0);
+    const totalDiscount = sales.filter(s => s.status !== 'voided').reduce((acc, s) => acc + (s.discount || s.discountAmount || 0), 0);
+    
+    console.log("SALES COUNT:", sales.length);
+    console.log("SUM GRAND TOTAL:", totalGrand);
+    console.log("SUM DISCOUNT:", totalDiscount);
+    
+    const pms = sales.filter(s => s.status !== 'voided').reduce((acc, s) => {
+       const ps = s.payments || [{method: s.paymentMethod, amount: s.grandTotal}];
+       ps.forEach(p => {
+          acc[p.method] = (acc[p.method] || 0) + p.amount;
+       });
+       return acc;
+    }, {});
+    console.log("RECALCULATED PAYMENTS:", pms);
+  } else {
+    console.log("SHIFT NOT FOUND");
   }
 }
 
-inspectRaw().then(() => console.log('Done')).catch(console.error);
+inspect();
