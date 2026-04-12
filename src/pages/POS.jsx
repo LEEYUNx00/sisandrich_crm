@@ -15,6 +15,7 @@ import QuickAddProductModal from '../components/POS/QuickAddProductModal';
 import ProductDetailModal from '../components/POS/ProductDetailModal';
 import ItemDiscountModal from '../components/POS/ItemDiscountModal';
 import BillDiscountModal from '../components/POS/BillDiscountModal';
+import QuickStockModal from '../components/POS/QuickStockModal';
 
 export default function POS() {
   const [cart, setCart] = useState([]);
@@ -46,6 +47,10 @@ export default function POS() {
   const [showItemDiscountModal, setShowItemDiscountModal] = useState(false);
 
   const [showBillDiscountModal, setShowBillDiscountModal] = useState(false);
+
+  // Quick Stock Update
+  const [showQuickStock, setShowQuickStock] = useState(false);
+  const [quickStockProduct, setQuickStockProduct] = useState(null);
 
   // Customer Search in Modal
   const [modalCustomerSearch, setModalCustomerSearch] = useState('');
@@ -164,7 +169,10 @@ export default function POS() {
     const currentStock = product.stock1st || 0;
     
     if (isRestricted && currentStock <= 0) {
-      return alert(`❌ สินค้าหมด! (โหมด Restricted: ไม่สามารถขายสินค้าที่ไม่มีในสต็อกได้)`);
+      // เปิด Modal เติมสต็อกด่วนแทนการ Alert
+      setQuickStockProduct(product);
+      setShowQuickStock(true);
+      return;
     }
 
     setCart(prev => {
@@ -219,6 +227,44 @@ export default function POS() {
         setLastSearchAttempt(unknownBarcode);
         // คุณอาจจะเพิ่ม UI แจ้งเตือนตรงนี้ได้
       }
+    }
+  };
+
+  const handleQuickStockConfirm = async (qtyToAdd) => {
+    if (!quickStockProduct) return;
+    
+    try {
+      const productRef = doc(db, 'products', quickStockProduct.id);
+      // 🔥 เพิ่มสต็อกใน Firestore ทันที
+      await updateDoc(productRef, {
+        stock1st: increment(qtyToAdd),
+        updatedAt: serverTimestamp()
+      });
+      
+      // 📝 บันทึก Log การเพิ่มสต็อกด่วน
+      await addDoc(collection(db, 'inventory_logs'), {
+        productId: quickStockProduct.id,
+        sku: quickStockProduct.sku || '',
+        name: quickStockProduct.name || '',
+        type: 'in',
+        amount: qtyToAdd,
+        location: '1st',
+        reason: 'Quick Stock Update (POS)',
+        timestamp: serverTimestamp()
+      });
+
+      // ปรับปรุง object ชั่วคราวเพื่อให้ addToCart ผ่าน
+      const updatedProduct = { ...quickStockProduct, stock1st: (quickStockProduct.stock1st || 0) + qtyToAdd };
+      
+      setShowQuickStock(false);
+      setQuickStockProduct(null);
+      
+      // เพิ่มลงตะกร้าทันที
+      addToCart(updatedProduct);
+      
+    } catch (err) {
+      console.error("Quick stock update failed:", err);
+      alert("ไม่สามารถเพิ่มสต็อกได้: " + err.message);
     }
   };
 
@@ -1232,6 +1278,13 @@ export default function POS() {
         currentValue={customGlobalDiscount}
         currentType={customGlobalDiscountType}
         onApply={handleBillDiscountApply}
+      />
+
+      <QuickStockModal
+        isOpen={showQuickStock}
+        onClose={() => { setShowQuickStock(false); setQuickStockProduct(null); }}
+        product={quickStockProduct}
+        onConfirm={handleQuickStockConfirm}
       />
     </>
   );

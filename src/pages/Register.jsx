@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { db } from '../firebase';
-import { collection, addDoc, serverTimestamp, query, where, getDocs } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, query, where, getDocs, onSnapshot } from 'firebase/firestore';
 import { 
   User, Phone, Calendar, Send, CheckCircle, 
   ChevronRight, Star, Sparkles, Heart,
@@ -14,8 +14,11 @@ export default function Register() {
     dob: '',
     gender: 'Male',
     channel: 'Direct Link',
-    notes: ''
+    notes: '',
+    recommenderType: 'employee', // 'employee' | 'manual' | 'none'
+    recommenderName: ''
   });
+  const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [memberId, setMemberId] = useState('');
@@ -36,6 +39,14 @@ export default function Register() {
       setFormData(prev => ({ ...prev, dob: `${year}-${formattedMonth}-${formattedDay}` }));
     }
   };
+
+  // Fetch Employees for Recommender Dropdown
+  useState(() => {
+    const unsub = onSnapshot(collection(db, 'employees'), (snap) => {
+      setEmployees(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+    return () => unsub();
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -75,6 +86,7 @@ export default function Register() {
         dob: formData.dob,
         gender: formData.gender,
         channel: formData.channel,
+        referredBy: formData.recommenderType !== 'none' ? formData.recommenderName : null,
         notes: formData.notes,
         type: 'Silver',
         totalSpend: 0,
@@ -336,9 +348,9 @@ export default function Register() {
               </div>
             </div>
 
-            <div style={{ marginBottom: '24px' }}>
-              <label style={{ display: 'block', fontSize: '10px', fontWeight: '900', color: '#D4AF37', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>ช่องทางการรู้จักร้าน *</label>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px' }}>
+            <div style={{ marginBottom: '16px' }}>
+              <label style={{ display: 'block', fontSize: '10px', fontWeight: '900', color: '#D4AF37', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>ช่องทางที่รู้จักเรา *</label>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
                 {channelOptions.map(opt => (
                   <button
                     key={opt.value}
@@ -351,22 +363,62 @@ export default function Register() {
                       borderColor: formData.channel === opt.value ? '#8B0000' : '#F5E6D3',
                       background: formData.channel === opt.value ? 'linear-gradient(135deg, #8B0000 0%, #600000 100%)' : '#fff',
                       color: formData.channel === opt.value ? '#fff' : '#666',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: '8px',
-                      fontSize: '12px',
+                      fontSize: '11px',
                       fontWeight: '800',
                       cursor: 'pointer',
                       transition: 'all 0.3s',
-                      boxShadow: formData.channel === opt.value ? '0 4px 10px rgba(139, 0, 0, 0.2)' : 'none'
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '4px'
                     }}
                   >
-                    <span style={{ color: formData.channel === opt.value ? '#fff' : '#D4AF37', opacity: 0.8 }}>{opt.icon}</span> 
+                    {opt.icon}
                     {opt.label}
                   </button>
                 ))}
               </div>
+            </div>
+
+            <div style={{ marginBottom: '24px' }}>
+              <label style={{ display: 'block', fontSize: '10px', fontWeight: '900', color: '#D4AF37', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>ผู้แนะนำ (Recommender)</label>
+              <select
+                className="input"
+                style={{ width: '100%', height: '44px', background: '#FFFEFA', border: '1px solid #F5E6D3', borderRadius: '12px', padding: '0 12px', fontSize: '14px', outline: 'none', color: '#1A1110', marginBottom: formData.recommenderType === 'manual' ? '12px' : '0' }}
+                value={formData.recommenderType === 'none' ? 'none' : (formData.recommenderType === 'manual' ? 'manual' : formData.recommenderName)}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (val === 'none') {
+                    setFormData(prev => ({ ...prev, recommenderType: 'none', recommenderName: '' }));
+                  } else if (val === 'manual') {
+                    setFormData(prev => ({ ...prev, recommenderType: 'manual', recommenderName: '' }));
+                  } else {
+                    setFormData(prev => ({ ...prev, recommenderType: 'employee', recommenderName: val }));
+                  }
+                }}
+              >
+                <option value="none">-- ไม่มีผู้แนะนำ --</option>
+                <optgroup label="พนักงานร้าน">
+                  {employees.map(emp => (
+                    <option key={emp.id} value={emp.nickname || emp.name}>{emp.nickname || emp.name}</option>
+                  ))}
+                </optgroup>
+                <option value="manual">➕ ระบุชื่อผู้แนะนำเอง...</option>
+              </select>
+
+              {formData.recommenderType === 'manual' && (
+                <div style={{ animation: 'slideIn 0.3s ease-out', position: 'relative' }}>
+                  <Users style={{ position: 'absolute', left: '14px', top: '14px', color: '#D4AF37', opacity: 0.6 }} size={16} />
+                  <input 
+                    type="text" 
+                    placeholder="พิมพ์ชื่อคนแนะนำ..."
+                    value={formData.recommenderName}
+                    onChange={(e) => setFormData(prev => ({ ...prev, recommenderName: e.target.value }))}
+                    style={{ width: '100%', height: '44px', background: '#FFFEFA', border: '1px solid #F5E6D3', borderRadius: '12px', paddingLeft: '40px', fontSize: '14px', outline: 'none', color: '#1A1110' }}
+                  />
+                </div>
+              )}
             </div>
 
             <button 

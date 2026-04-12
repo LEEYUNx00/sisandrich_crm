@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { db } from '../firebase';
 import { collection, onSnapshot, query, orderBy, limit, doc, updateDoc, increment, addDoc, serverTimestamp, getDoc, where } from 'firebase/firestore';
-import { History, Search, Download, XCircle, Printer, CheckCircle, AlertCircle, X, FileText, RefreshCw } from 'lucide-react';
+import { History, Search, Download, XCircle, Printer, CheckCircle, AlertCircle, X, FileText, RefreshCw, Edit2, Lock } from 'lucide-react';
 import ReceiptModal from '../components/POS/ReceiptModal';
 import html2canvas from 'html2canvas';
 
@@ -15,6 +15,13 @@ export default function SalesHistory() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [activeShift, setActiveShift] = useState(null);
   const [isLinking, setIsLinking] = useState(null); 
+  
+  // Edit Bill State
+  const [editingSale, setEditingSale] = useState(null);
+  const [isAdminVerified, setIsAdminVerified] = useState(false);
+  const [adminPin, setAdminPin] = useState('');
+  const [editForm, setEditForm] = useState({ newMethod: 'cash', reason: '' });
+  const [employees, setEmployees] = useState([]);
 
   // Pagination State
   const [currentPage, setCurrentPage] = useState(1);
@@ -47,6 +54,14 @@ export default function SalesHistory() {
     return () => unsub();
   }, []);
 
+  // Fetch employees to verify Admin PIN
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, 'employees'), (snap) => {
+      setEmployees(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+    return () => unsub();
+  }, []);
+
   const handleLinkToShift = async (saleId) => {
     if (!activeShift) return alert("กรุณาเปิดกะก่อนนำยอดเข้า");
     setIsLinking(saleId);
@@ -59,6 +74,80 @@ export default function SalesHistory() {
       alert("เกิดข้อผิดพลาด: " + err.message);
     } finally {
       setIsLinking(null);
+    }
+  };
+
+  const handleEditSale = async () => {
+    if (!editingSale || !editForm.reason || isProcessing) return;
+    
+    setIsProcessing(true);
+    try {
+      const saleRef = doc(db, 'sales', editingSale.id);
+      const oldMethod = editingSale.payments?.[0]?.method || 'cash';
+      const amount = editingSale.grandTotal || 0;
+      
+      // 1. Update Sale Document
+      const updatedPayments = editingSale.payments.map((p, i) => i === 0 ? { ...p, method: editForm.newMethod } : p);
+      
+      await updateDoc(saleRef, {
+        payments: updatedPayments,
+        editedAt: serverTimestamp(),
+        editReason: editForm.reason,
+        lastEditedBy: 'Admin'
+      });
+
+      // 2. Adjust Shift Totals (Crucial!)
+      if (editingSale.shiftId && oldMethod !== editForm.newMethod) {
+        const shiftRef = doc(db, 'shifts', editingSale.shiftId);
+        const shiftSnap = await getDoc(shiftRef);
+        
+        if (shiftSnap.exists()) {
+          const shiftData = shiftSnap.data();
+          const pms = shiftData.payments || { cash: 0, transfer: 0, credit: 0 };
+          
+          // Remove old amount
+          if (pms[oldMethod] !== undefined) pms[oldMethod] = (pms[oldMethod] || 0) - amount;
+          if (oldMethod === 'cash') shiftData.netCashSales = (shiftData.netCashSales || 0) - amount;
+          if (['transfer', 'online', 'promptpay'].includes(oldMethod)) {
+             shiftData.transferSales = (shiftData.transferSales || 0) - amount;
+          }
+
+          // Add new amount
+          const targetMethod = editForm.newMethod;
+          pms[targetMethod] = (pms[targetMethod] || 0) + amount;
+          if (targetMethod === 'cash') shiftData.netCashSales = (shiftData.netCashSales || 0) + amount;
+          if (['transfer', 'online', 'promptpay'].includes(targetMethod)) {
+             shiftData.transferSales = (shiftData.transferSales || 0) + amount;
+          }
+
+          // Sync back to Firestore
+          await updateDoc(shiftRef, {
+            payments: pms,
+            netCashSales: shiftData.netCashSales || 0,
+            transferSales: shiftData.transferSales || 0,
+            endingCashSystem: (shiftData.startingCash || 0) + (shiftData.netCashSales || 0)
+          });
+        }
+      }
+
+      // 3. System Log
+      await addDoc(collection(db, 'system_logs'), {
+        type: 'pos_edit',
+        action: 'แก้ไขบิล (Edit Bill)',
+        detail: `บิล ${editingSale.billId || editingSale.id.slice(0,8)} แก้ไขวิธีชำระจาก ${oldMethod} เป็น ${editForm.newMethod} (เหตุผล: ${editForm.reason})`,
+        operator: 'Admin',
+        timestamp: serverTimestamp()
+      });
+
+      alert('แก้ไขข้อมูลบิลและยอดกะสำเร็จแล้ว');
+      setEditingSale(null);
+      setIsAdminVerified(false);
+      setAdminPin('');
+      setEditForm({ newMethod: 'cash', reason: '' });
+    } catch (err) {
+      alert('เกิดข้อผิดพลาด: ' + err.message);
+    } finally {
+      setIsProcessing(false);
     }
   };
 
@@ -365,7 +454,7 @@ export default function SalesHistory() {
                   )}
                 </td>
                 <td style={{ padding: '14px 16px', textAlign: 'center' }}>
-                  <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
+                    <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
                     <button 
                       className="btn-icon" 
                       style={{ padding: '8px', background: '#EBF8FF', color: '#3182CE' }} 
@@ -375,15 +464,32 @@ export default function SalesHistory() {
                       <FileText size={16} />
                     </button>
                     {sale.status !== 'voided' && (
-                      <button 
-                        className="btn-icon" 
-                        style={{ padding: '8px', background: '#FFF5F5', color: '#E53E3E' }} 
-                        title="ยกเลิกบิล (Void)"
-                        onClick={() => handleVoid(sale)}
-                        disabled={isProcessing}
-                      >
-                        <XCircle size={16} />
-                      </button>
+                      <>
+                        <button 
+                          className="btn-icon" 
+                          style={{ padding: '8px', background: '#f0f9ff', color: '#0369a1' }} 
+                          title="แก้ไขวิธีชำระ (Edit Payment)"
+                          onClick={() => {
+                            setEditingSale(sale);
+                            setIsAdminVerified(false);
+                            setEditForm({ 
+                              newMethod: sale.payments?.[0]?.method || 'cash',
+                              reason: ''
+                            });
+                          }}
+                        >
+                          <Edit2 size={16} />
+                        </button>
+                        <button 
+                          className="btn-icon" 
+                          style={{ padding: '8px', background: '#FFF5F5', color: '#E53E3E' }} 
+                          title="ยกเลิกบิล (Void)"
+                          onClick={() => handleVoid(sale)}
+                          disabled={isProcessing}
+                        >
+                          <XCircle size={16} />
+                        </button>
+                      </>
                     )}
                   </div>
                 </td>
@@ -426,6 +532,90 @@ export default function SalesHistory() {
         onClose={() => setSelectedReceipt(null)}
         onPrint={handlePrint}
       />
+
+      {/* Admin Edit Modal */}
+      {editingSale && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(15, 23, 42, 0.7)', backdropFilter: 'blur(8px)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+           <div className="card animate-scale-up" style={{ width: '100%', maxWidth: '450px', padding: 0, overflow: 'hidden' }}>
+              <div style={{ padding: '20px', background: '#1e293b', color: 'white', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <Edit2 size={20} />
+                    <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 'bold' }}>แก้ไขวิธีชำระเงิน</h3>
+                 </div>
+                 <button onClick={() => setEditingSale(null)} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer' }}><X size={20} /></button>
+              </div>
+
+              {!isAdminVerified ? (
+                <div style={{ padding: '30px', textAlign: 'center' }}>
+                   <div style={{ width: '60px', height: '60px', background: '#f1f5f9', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px' }}>
+                      <Lock size={24} color="#64748b" />
+                   </div>
+                   <h4 style={{ margin: '0 0 8px', fontSize: '16px', color: '#1e293b' }}>ยืนยันสิทธิ์ผู้ดูแล</h4>
+                   <p style={{ margin: '0 0 24px', fontSize: '13px', color: '#64748b' }}>กรุณาใส่รหัสผ่านแอดมินเพื่อดำเนินการ</p>
+                   <input 
+                     type="password" 
+                     placeholder="รหัสผ่านผู้ดูแล..." 
+                     className="input" 
+                     value={adminPin}
+                     onChange={(e) => {
+                       const val = e.target.value;
+                       setAdminPin(val);
+                       const isAdmin = val === 'sis8888' || employees.some(emp => emp.role === 'admin' && emp.pin === val);
+                       if (isAdmin) {
+                         setIsAdminVerified(true);
+                       }
+                     }}
+                     style={{ textAlign: 'center', fontSize: '20px', letterSpacing: '8px' }}
+                     autoFocus
+                   />
+                </div>
+              ) : (
+                <div style={{ padding: '24px' }}>
+                   <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '12px', border: '1px solid #e2e8f0', marginBottom: '20px' }}>
+                      <div style={{ fontSize: '12px', color: '#64748b', fontWeight: 'bold', marginBottom: '4px' }}>กำลังแก้ไขบิล:</div>
+                      <div style={{ fontWeight: '900', color: '#0f172a', fontSize: '16px' }}>{editingSale.billId || editingSale.id.slice(0,8).toUpperCase()}</div>
+                      <div style={{ fontSize: '14px', color: '#0ea5e9', fontWeight: 'bold' }}>ยอดสุทธิ: ฿{(editingSale.grandTotal || 0).toLocaleString()}</div>
+                   </div>
+
+                   <div style={{ marginBottom: '20px' }}>
+                      <label style={{ display: 'block', fontSize: '13px', fontWeight: 'bold', color: '#475569', marginBottom: '8px' }}>เปลี่ยนวิธีชำระเป็น:</label>
+                      <select 
+                        className="input" 
+                        value={editForm.newMethod} 
+                        onChange={(e) => setEditForm({...editForm, newMethod: e.target.value})}
+                      >
+                        <option value="cash">💵 เงินสด (Cash)</option>
+                        <option value="transfer">📱 โอนเงิน (Bank Transfer)</option>
+                        <option value="credit">💳 เครดิตการ์ด (Credit Card)</option>
+                        <option value="storeCredit">👛 วอลเล็ท (Store Credit)</option>
+                      </select>
+                   </div>
+
+                   <div style={{ marginBottom: '24px' }}>
+                      <label style={{ display: 'block', fontSize: '13px', fontWeight: 'bold', color: '#475569', marginBottom: '8px' }}>ระบุเหตุผลการแก้ไข (บังคับ):</label>
+                      <textarea 
+                        className="input" 
+                        rows="3" 
+                        placeholder="เช่น พนักงานกดเงินผิด, ลูกค้าเปลี่ยนจากเงินสดเป็นโอน..."
+                        value={editForm.reason}
+                        onChange={(e) => setEditForm({...editForm, reason: e.target.value})}
+                        style={{ height: 'auto', resize: 'none', padding: '12px' }}
+                      />
+                   </div>
+
+                   <button 
+                     className="btn" 
+                     disabled={!editForm.reason || isProcessing}
+                     onClick={handleEditSale}
+                     style={{ width: '100%', background: '#0f172a', color: 'white', padding: '14px', borderRadius: '12px', fontSize: '16px', display: 'flex', justifyContent: 'center', gap: '8px' }}
+                   >
+                     {isProcessing ? 'กำลังบันทึก...' : 'บันทึกการแก้ไขบิล'}
+                   </button>
+                </div>
+              )}
+           </div>
+        </div>
+      )}
 
     </div>
   );
