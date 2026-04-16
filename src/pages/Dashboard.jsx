@@ -2,8 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { Banknote, Package, Users, Activity, RefreshCcw } from 'lucide-react';
 import { db } from '../firebase';
 import { collection, doc, setDoc, onSnapshot, query, orderBy, limit } from 'firebase/firestore';
+import { useLanguage } from '../i18n/LanguageContext';
 
 export default function Dashboard() {
+  const { t } = useLanguage();
   const [sales, setSales] = useState([]);
   const [products, setProducts] = useState([]);
   const [customers, setCustomers] = useState([]);
@@ -110,17 +112,17 @@ export default function Dashboard() {
     .slice(0, 5);
 
   const stats = [
-    { title: 'ยอดชายรวม', value: `฿${totalSalesAmount.toLocaleString()}`, icon: Banknote, color: '#10b981', bg: '#ecfdf5', label: 'Sales' },
-    { title: 'จำนวนที่ขาย', value: totalItemsSold.toLocaleString(), icon: Activity, color: '#3b82f6', bg: '#eff6ff', label: 'Units' },
-    { title: 'สมาชิกใหม่', value: newCustomers.toLocaleString(), icon: Users, color: '#8b5cf6', bg: '#f5f3ff', label: 'Members' },
-    { title: 'สินค้าใกล้หมด', value: lowStockCount.toLocaleString(), icon: Package, color: '#ef4444', bg: '#fef2f2', label: 'Alerts' },
+    { title: t('total_sales', 'ยอดขายรวม'), value: `฿${totalSalesAmount.toLocaleString()}`, icon: Banknote, color: '#10b981', bg: '#ecfdf5', label: 'Sales' },
+    { title: t('units_sold', 'จำนวนที่ขาย'), value: totalItemsSold.toLocaleString(), icon: Activity, color: '#3b82f6', bg: '#eff6ff', label: 'Units' },
+    { title: t('new_members', 'สมาชิกใหม่'), value: newCustomers.toLocaleString(), icon: Users, color: '#8b5cf6', bg: '#f5f3ff', label: 'Members' },
+    { title: t('low_stock', 'สินค้าใกล้หมด'), value: lowStockCount.toLocaleString(), icon: Package, color: '#ef4444', bg: '#fef2f2', label: 'Alerts' },
   ];
 
   if (loading && customers.length === 0) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '80vh', color: '#64748b' }}>
         <RefreshCcw size={24} className="animate-spin" />
-        <span style={{ marginLeft: '12px', fontWeight: 'bold' }}>กำลังโหลดข้อมูล...</span>
+        <span style={{ marginLeft: '12px', fontWeight: 'bold' }}>{t('loading_data', 'กำลังโหลดข้อมูล...')}</span>
       </div>
     );
   }
@@ -139,18 +141,18 @@ export default function Dashboard() {
         boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05)'
       }}>
         <div>
-           <div style={{ fontSize: '12px', fontWeight: '900', color: '#6366f1', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '4px' }}>Analytics Preview</div>
-           <h2 style={{ fontSize: '28px', fontWeight: '900', color: '#0f172a', margin: 0 }}>ภาพรวมระบบ (Dashboard)</h2>
+           <div style={{ fontSize: '12px', fontWeight: '900', color: '#6366f1', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '4px' }}>{t('analytics_preview', 'Analytics Preview')}</div>
+           <h2 style={{ fontSize: '28px', fontWeight: '900', color: '#0f172a', margin: 0 }}>{t('dashboard_title', 'ภาพรวมระบบ (Dashboard)')}</h2>
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'end', gap: '12px' }}>
            <div style={{ display: 'flex', gap: '4px', background: '#f8fafc', padding: '4px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
               {[
-                { id: 'today', label: 'วันนี้' },
-                { id: 'yesterday', label: 'เมื่อวาน' },
-                { id: '7days', label: '7 วัน' },
-                { id: '30days', label: '30 วัน' },
-                { id: 'custom', label: 'กำหนดเอง' }
+                { id: 'today', label: t('today', 'วันนี้') },
+                { id: 'yesterday', label: t('yesterday', 'เมื่อวาน') },
+                { id: '7days', label: t('7_days', '7 วัน') },
+                { id: '30days', label: t('30_days', '30 วัน') },
+                { id: 'custom', label: t('custom', 'กำหนดเอง') }
               ].map(f => (
                 <button
                   key={f.id}
@@ -195,7 +197,7 @@ export default function Dashboard() {
                  </div>
                  <div style={{ width: '8px', height: '2px', background: '#cbd5e1' }}></div>
                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#f1f5f9', padding: '6px 12px', borderRadius: '10px' }}>
-                    <span style={{ fontSize: '11px', fontWeight: 'bold', color: '#64748b' }}>สิ้นสุด:</span>
+                    <span style={{ fontSize: '11px', fontWeight: 'bold', color: '#64748b' }}>{t('end', 'สิ้นสุด:')}</span>
                     <input 
                       type="date" 
                       style={{ border: 'none', background: 'transparent', fontSize: '12px', fontWeight: '700', outline: 'none', color: '#0f172a' }}
@@ -272,8 +274,8 @@ export default function Dashboard() {
         <div className="card" style={{ padding: '0', overflow: 'hidden' }}>
           <div style={{ padding: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #f1f5f9' }}>
             <div>
-              <h3 style={{ fontSize: '18px', fontWeight: '800', color: '#0f172a', margin: 0 }}>บันทึกการขายล่าสุด</h3>
-              <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '4px' }}>{recentTransactions.length} รายการที่กำลังแสดงผล</div>
+              <h3 style={{ fontSize: '18px', fontWeight: '800', color: '#0f172a', margin: 0 }}>{t('recent_sales', 'บันทึกการขายล่าสุด')}</h3>
+              <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '4px' }}>{recentTransactions.length} {t('items_showing', 'รายการที่กำลังแสดงผล')}</div>
             </div>
           </div>
           
@@ -281,10 +283,10 @@ export default function Dashboard() {
             <table className="table" style={{ borderCollapse: 'separate', borderSpacing: '0 8px', width: '100%', padding: '0 24px 24px 24px' }}>
               <thead>
                 <tr style={{ background: 'transparent' }}>
-                  <th style={{ background: 'transparent', color: '#94a3b8', padding: '12px' }}>เวลา</th>
-                  <th style={{ background: 'transparent', color: '#94a3b8', padding: '12px' }}>เลขที่บิล</th>
-                  <th style={{ background: 'transparent', color: '#94a3b8', padding: '12px' }}>ยอดสุทธิ</th>
-                  <th style={{ background: 'transparent', color: '#94a3b8', padding: '12px', textAlign: 'right' }}>สถานะ</th>
+                  <th style={{ background: 'transparent', color: '#94a3b8', padding: '12px' }}>{t('time', 'เวลา')}</th>
+                  <th style={{ background: 'transparent', color: '#94a3b8', padding: '12px' }}>{t('bill_no', 'เลขที่บิล')}</th>
+                  <th style={{ background: 'transparent', color: '#94a3b8', padding: '12px' }}>{t('net_total', 'ยอดสุทธิ')}</th>
+                  <th style={{ background: 'transparent', color: '#94a3b8', padding: '12px', textAlign: 'right' }}>{t('status', 'สถานะ')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -319,7 +321,7 @@ export default function Dashboard() {
                 ))}
                 {recentTransactions.length === 0 && (
                   <tr>
-                    <td colSpan="4" style={{ textAlign: 'center', padding: '60px', color: '#94a3b8', fontStyle: 'italic' }}>ไม่พบข้อมูลในช่วงที่เลือก</td>
+                    <td colSpan="4" style={{ textAlign: 'center', padding: '60px', color: '#94a3b8', fontStyle: 'italic' }}>{t('no_data_in_range', 'ไม่พบข้อมูลในช่วงที่เลือก')}</td>
                   </tr>
                 )}
               </tbody>
@@ -330,8 +332,8 @@ export default function Dashboard() {
         {/* Top Products */}
         <div className="card" style={{ padding: '0', overflow: 'hidden' }}>
           <div style={{ padding: '24px', background: '#f8fafc', borderBottom: '1px solid #f1f5f9' }}>
-            <h3 style={{ fontSize: '18px', fontWeight: '800', color: '#0f172a', margin: 0 }}>อันดับสินค้าขายดี</h3>
-            <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '4px' }}>อ้างอิงตามจำนวนยอดขายในช่วงนี้</div>
+            <h3 style={{ fontSize: '18px', fontWeight: '800', color: '#0f172a', margin: 0 }}>{t('top_selling_products', 'อันดับสินค้าขายดี')}</h3>
+            <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '4px' }}>{t('based_on_sales', 'อ้างอิงตามจำนวนยอดขายในช่วงนี้')}</div>
           </div>
           
           <div style={{ padding: '12px 24px 24px' }}>
@@ -363,12 +365,12 @@ export default function Dashboard() {
                 </div>
                 <div style={{ textAlign: 'right' }}>
                   <div style={{ fontWeight: '900', color: '#3b82f6', fontSize: '16px' }}>{p.sold.toLocaleString()}</div>
-                  <div style={{ fontSize: '10px', color: '#94a3b8', fontWeight: '700' }}>รายการ</div>
+                  <div style={{ fontSize: '10px', color: '#94a3b8', fontWeight: '700' }}>{t('item_unit', 'รายการ')}</div>
                 </div>
               </div>
             ))}
             {topSellingProducts.length === 0 && (
-               <div style={{ textAlign: 'center', padding: '60px', color: '#94a3b8', fontStyle: 'italic' }}>ยังไม่มีข้อมูลอันดับสินค้า</div>
+               <div style={{ textAlign: 'center', padding: '60px', color: '#94a3b8', fontStyle: 'italic' }}>{t('no_top_products', 'ยังไม่มีข้อมูลอันดับสินค้า')}</div>
             )}
           </div>
         </div>

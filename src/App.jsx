@@ -20,21 +20,24 @@ import ShiftManagement from './pages/ShiftManagement';
 import MemberDashboard from './pages/MemberDashboard';
 import { db } from './firebase';
 import { collection, query, where, getDocs, onSnapshot } from 'firebase/firestore';
+import { useLanguage } from './i18n/LanguageContext';
+import LanguageSwitcher from './components/LanguageSwitcher';
 
 const Sidebar = ({ permissions }) => {
   const location = useLocation();
+  const { t } = useLanguage();
   const allNavItems = [
-    { path: '/', label: 'Dashboard', icon: LayoutDashboard, key: 'dashboard' },
-    { path: '/pos', label: 'POS System', icon: ShoppingCart, key: 'pos' },
-    { path: '/shift', label: '⏱ เปิด-ปิดกะ', icon: Timer, key: 'pos' },
-    { path: '/sales-history', label: 'Sales History', icon: History, key: 'pos' },
-    { path: '/inventory', label: 'Inventory', icon: Package, key: 'inventory' },
-    { path: '/crm', label: 'CRM & Customers', icon: Users, key: 'crm' },
-    { path: '/employees', label: 'Employees', icon: UserCheck, key: 'employees' },
-    { path: '/promotions', label: 'Promotions', icon: BadgePercent, key: 'promotions' },
-    { path: '/settings/print', label: '📄 บิล & 🏷️ บาร์โค้ด', icon: Printer, key: 'settings' },
-    { path: '/reports', label: 'Reports & Logs', icon: FileText, key: 'reports' },
-    { path: '/settings', label: 'Settings', icon: SettingsIcon, key: 'settings' },
+    { path: '/', label: t('nav_dashboard', 'Dashboard'), icon: LayoutDashboard, key: 'dashboard' },
+    { path: '/pos', label: t('nav_pos', 'POS System'), icon: ShoppingCart, key: 'pos' },
+    { path: '/shift', label: t('nav_shift', '⏱ เปิด-ปิดกะ'), icon: Timer, key: 'pos' },
+    { path: '/sales-history', label: t('nav_sales_history', 'Sales History'), icon: History, key: 'pos' },
+    { path: '/inventory', label: t('nav_inventory', 'Inventory'), icon: Package, key: 'inventory' },
+    { path: '/crm', label: t('nav_crm', 'CRM & Customers'), icon: Users, key: 'crm' },
+    { path: '/employees', label: t('nav_employees', 'Employees'), icon: UserCheck, key: 'employees' },
+    { path: '/promotions', label: t('nav_promotions', 'Promotions'), icon: BadgePercent, key: 'promotions' },
+    { path: '/settings/print', label: t('nav_print', '📄 บิล & 🏷️ บาร์โค้ด'), icon: Printer, key: 'settings' },
+    { path: '/reports', label: t('nav_reports', 'Reports & Logs'), icon: FileText, key: 'reports' },
+    { path: '/settings', label: t('nav_settings', 'Settings'), icon: SettingsIcon, key: 'settings' },
   ];
 
   const navItems = allNavItems.filter(item => {
@@ -69,20 +72,21 @@ const Sidebar = ({ permissions }) => {
 
 const Header = ({ activeShift }) => {
   const location = useLocation();
+  const { t } = useLanguage();
   const getHeaderTitle = () => {
     switch (location.pathname) {
-      case '/': return 'Overview Dashboard';
-      case '/pos': return 'Point of Sale (POS)';
-      case '/shift': return 'เปิด-ปิดกะ (Shift Management)';
-      case '/sales-history': return 'Sales History & Void';
-      case '/inventory': return 'Inventory Management';
-      case '/crm': return 'Customer Relationship (CRM)';
-      case '/employees': return 'Employee Management';
-      case '/promotions': return 'Promotions & Discounts';
-      case '/reports': return 'Reports & Activity Logs';
-      case '/settings/print': return 'จัดการรูปแบบบิลและการพิมพ์';
-      case '/settings': return 'System Settings';
-      default: return 'SIS&RICH portal';
+      case '/': return t('header_overview', 'Overview Dashboard');
+      case '/pos': return t('header_pos', 'Point of Sale (POS)');
+      case '/shift': return t('header_shift', 'เปิด-ปิดกะ (Shift Management)');
+      case '/sales-history': return t('header_sales_history', 'Sales History & Void');
+      case '/inventory': return t('header_inventory', 'Inventory Management');
+      case '/crm': return t('header_crm', 'Customer Relationship (CRM)');
+      case '/employees': return t('header_employees', 'Employee Management');
+      case '/promotions': return t('header_promotions', 'Promotions & Discounts');
+      case '/reports': return t('header_reports', 'Reports & Activity Logs');
+      case '/settings/print': return t('header_print', 'จัดการรูปแบบบิลและการพิมพ์');
+      case '/settings': return t('header_settings', 'System Settings');
+      default: return t('header_default', 'SIS&RICH portal');
     }
   };
 
@@ -107,7 +111,7 @@ const Header = ({ activeShift }) => {
             width: 'fit-content'
           }}>
             <Timer size={12} />
-            <span>Shift #{activeShift.shiftNumber} · เริ่มกะ: {activeShift.openedAt?.toDate?.().toLocaleString('th-TH', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: 'short' }) || '-'}</span>
+            <span>{t('shift_label', 'Shift')} #{activeShift.shiftNumber} · {t('shift_started', 'เริ่มกะ')}: {activeShift.openedAt?.toDate?.().toLocaleString('th-TH', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: 'short' }) || '-'}</span>
           </div>
         )}
       </div>
@@ -118,9 +122,11 @@ const Header = ({ activeShift }) => {
         </div>
         
         <div style={{ textAlign: 'right' }}>
-           <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#2D3748' }}>{auth.currentUser?.email?.split('@')[0] || 'Admin Staff'}</div>
-           <div style={{ fontSize: '10px', color: '#718096', fontWeight: 'bold', textTransform: 'uppercase' }}>System Operator</div>
+           <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#2D3748' }}>{auth.currentUser?.email?.split('@')[0] || t('admin_staff', 'Admin Staff')}</div>
+           <div style={{ fontSize: '10px', color: '#718096', fontWeight: 'bold', textTransform: 'uppercase' }}>{t('system_operator', 'System Operator')}</div>
         </div>
+
+        <LanguageSwitcher />
 
         <button 
           onClick={() => signOut(auth)}
@@ -141,7 +147,7 @@ const Header = ({ activeShift }) => {
           onMouseOver={(e) => { e.currentTarget.style.background = '#FEB2B2'; e.currentTarget.style.color = '#fff'; }}
           onMouseOut={(e) => { e.currentTarget.style.background = '#FFF5F5'; e.currentTarget.style.color = '#E53E3E'; }}
         >
-          <LogOut size={16} /> Logout
+          <LogOut size={16} /> {t('logout', 'Logout')}
         </button>
       </div>
     </header>
