@@ -32,7 +32,7 @@ export default function AddProductView({ products = [], setView }) {
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [printQty, setPrintQty] = useState(3); // จำนวนดวงที่จะพิมพ์
 
-  const allSubCats = ["Evil eyes", "หัวใจ", "จี้เล็ก", "มุก", "หยดน้ำ", "สายฝอ", "เพรช", "อื่นๆ"];
+  const allSubCats = ["Evil eyes", "หัวใจ", "จี้เล็ก", "มุก", "หยดน้ำ", "สายฝอ", "เพรช", "มินิมอล", "แฟชั่น", "โคฟเวอร์", "ทะเล", "การ์ตูน", "โบว์", "อื่นๆ"];
 
 
   const [categoryPrefixes, setCategoryPrefixes] = useState([

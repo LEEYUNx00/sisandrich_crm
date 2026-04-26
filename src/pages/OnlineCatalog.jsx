@@ -11,6 +11,7 @@ export default function OnlineCatalog() {
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [selectedSubCategory, setSelectedSubCategory] = useState('All');
   const [sortBy, setSortBy] = useState('newest'); // newest | oldest
+  const [visibleCount, setVisibleCount] = useState(15);
 
   const [editingProduct, setEditingProduct] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
@@ -27,6 +28,10 @@ export default function OnlineCatalog() {
     });
     return () => unsubscribe();
   }, []);
+
+  useEffect(() => {
+    setVisibleCount(15);
+  }, [searchTerm, selectedCategory, selectedSubCategory, sortBy]);
 
   const [categoryPrefixes, setCategoryPrefixes] = useState([
     { name: 'เครื่องประดับ', prefix: '00' },
@@ -169,8 +174,9 @@ export default function OnlineCatalog() {
       {loading ? (
         <div style={{ textAlign: 'center', padding: '40px' }}>กำลังโหลดข้อมูลสินค้า...</div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '20px' }}>
-          {sortedProducts.map(p => (
+        <>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '20px' }}>
+            {sortedProducts.slice(0, visibleCount).map(p => (
             <div key={p.id} className="card" style={{ padding: '0', overflow: 'hidden', display: 'flex', flexDirection: 'column', borderRadius: '12px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)', position: 'relative' }}>
               <button 
                 onClick={() => setEditingProduct({...p})} 
@@ -202,12 +208,26 @@ export default function OnlineCatalog() {
               </div>
             </div>
           ))}
-          {filteredProducts.length === 0 && (
-            <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '60px', color: '#718096', background: '#fff', borderRadius: '12px' }}>
-              ไม่พบสินค้าที่ค้นหา
-            </div>
-          )}
         </div>
+        
+        {sortedProducts.length === 0 && (
+          <div style={{ textAlign: 'center', padding: '60px', color: '#718096', background: '#fff', borderRadius: '12px', border: '1px solid #E2E8F0' }}>
+            ไม่พบสินค้าที่ค้นหา
+          </div>
+        )}
+
+        {sortedProducts.length > visibleCount && (
+          <div style={{ textAlign: 'center', marginTop: '32px', marginBottom: '20px' }}>
+            <button 
+              className="btn" 
+              onClick={() => setVisibleCount(prev => prev + 15)}
+              style={{ background: '#fff', border: '1px solid #E2E8F0', padding: '10px 30px', borderRadius: '10px', fontWeight: '600', color: '#4A5568', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}
+            >
+              ดูสินค้าเพิ่มเติม ({visibleCount} / {sortedProducts.length})
+            </button>
+          </div>
+        )}
+        </>
       )}
 
       {/* QUICK EDIT MODAL */}
@@ -264,7 +284,7 @@ export default function OnlineCatalog() {
                   <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', fontWeight: '600', color: '#4A5568' }}>หมวดหมู่ย่อย</label>
                   <select className="input" value={editingProduct.subCategory || ''} onChange={(e) => setEditingProduct({...editingProduct, subCategory: e.target.value})}>
                     <option value="">-- เลือกหมวดหมู่ย่อย --</option>
-                    {["Evil eyes", "หัวใจ", "จี้เล็ก", "มุก", "หยดน้ำ", "สายฝอ", "เพรช", "อื่นๆ"].map(c => <option key={c} value={c}>{c}</option>)}
+                    {["Evil eyes", "หัวใจ", "จี้เล็ก", "มุก", "หยดน้ำ", "สายฝอ", "เพรช", "มินิมอล", "แฟชั่น", "โคฟเวอร์", "ทะเล", "การ์ตูน", "โบว์", "อื่นๆ"].map(c => <option key={c} value={c}>{c}</option>)}
                   </select>
                 </div>
               </div>

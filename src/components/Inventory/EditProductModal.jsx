@@ -87,7 +87,7 @@ export default function EditProductModal({ products = [], editingProduct, setEdi
 
     if (!editingProduct) return null;
 
-    const allSubCats = ["Evil eyes", "หัวใจ", "จี้เล็ก", "มุก", "หยดน้ำ", "สายฝอ", "เพรช", "อื่นๆ"];
+    const allSubCats = ["Evil eyes", "หัวใจ", "จี้เล็ก", "มุก", "หยดน้ำ", "สายฝอ", "เพรช", "มินิมอล", "แฟชั่น", "โคฟเวอร์", "ทะเล", "การ์ตูน", "โบว์", "อื่นๆ"];
 
 
   return (
