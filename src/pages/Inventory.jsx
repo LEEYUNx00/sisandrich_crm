@@ -90,6 +90,7 @@ export default function Inventory() {
         name: data.name,
         sku: data.sku,
         category: data.category,
+        subCategory: data.subCategory || '',
         price: Number(data.price),
         cost: Number(data.cost) || 0,
         shelf1st: data.shelf1st || '',

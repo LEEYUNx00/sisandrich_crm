@@ -535,7 +535,7 @@ export default function ProductListView({
       </div>
 
       {/* MODALS */}
-      <EditProductModal editingProduct={editingProduct} setEditingProduct={setEditingProduct} handleUpdateProduct={handleUpdateProduct} handleDeleteProduct={handleDeleteProduct} />
+      <EditProductModal products={products} editingProduct={editingProduct} setEditingProduct={setEditingProduct} handleUpdateProduct={handleUpdateProduct} handleDeleteProduct={handleDeleteProduct} />
       <TransferModal transferProduct={transferProduct} setTransferProduct={setTransferProduct} transferQty={transferQty} setTransferQty={setTransferQty} selectedLocation={selectedLocation} locations={locations} handleConfirmTransfer={handleConfirmTransfer} />
       
       {/* QUICK ADJUST MODAL */}

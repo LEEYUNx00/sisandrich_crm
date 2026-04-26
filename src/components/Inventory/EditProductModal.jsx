@@ -3,7 +3,7 @@ import { Link, Upload, CheckCircle } from 'lucide-react';
 import { ref, uploadString, getDownloadURL } from 'firebase/storage';
 import { storage } from '../../firebase';
 
-export default function EditProductModal({ editingProduct, setEditingProduct, handleUpdateProduct, handleDeleteProduct }) {
+export default function EditProductModal({ products = [], editingProduct, setEditingProduct, handleUpdateProduct, handleDeleteProduct }) {
     const [imgType, setImgType] = useState('url'); // 'url' | 'upload'
     const [isUploading, setIsUploading] = useState(false);
     const [isNameAuto, setIsNameAuto] = useState(false); // ปิดไว้ก่อนสำหรับของเก่า ถ้าอยากใช้ค่อยกดเปิด
@@ -87,6 +87,8 @@ export default function EditProductModal({ editingProduct, setEditingProduct, ha
 
     if (!editingProduct) return null;
 
+    const allSubCats = ["Evil eyes", "หัวใจ", "จี้เล็ก", "มุก", "หยดน้ำ", "สายฝอ", "เพรช", "อื่นๆ"];
+
 
   return (
     <div style={{
@@ -161,15 +163,32 @@ export default function EditProductModal({ editingProduct, setEditingProduct, ha
             </div>
           </div>
 
-          <div style={{ marginBottom: '16px' }}>
-            <label style={{ display: 'block', marginBottom: '8px', fontSize: '14px', fontWeight: '500', color: '#718096' }}>บาร์โค้ด (Barcode) - *แก้ไขไม่ได้*</label>
-            <input 
-              type="text" 
-              className="input" 
-              value={editingProduct.barcode || ''} 
-              readOnly
-              style={{ backgroundColor: '#F7FAFC', cursor: 'not-allowed', color: '#A0AEC0' }}
-            />
+          <div style={{ display: 'flex', gap: '16px', marginBottom: '16px' }}>
+            <div style={{ flex: 1 }}>
+              <label style={{ display: 'block', marginBottom: '8px', fontSize: '14px', fontWeight: '500', color: '#718096' }}>บาร์โค้ด (Barcode) - *แก้ไขไม่ได้*</label>
+              <input 
+                type="text" 
+                className="input" 
+                value={editingProduct.barcode || ''} 
+                readOnly
+                style={{ backgroundColor: '#F7FAFC', cursor: 'not-allowed', color: '#A0AEC0' }}
+              />
+            </div>
+            <div style={{ flex: 1 }}>
+              <label style={{ display: 'block', marginBottom: '8px', fontSize: '14px', fontWeight: '500' }}>หมวดหมู่ย่อย (Sub-Category)</label>
+              <input 
+                list="sub-category-list"
+                type="text" 
+                className="input" 
+                value={editingProduct.subCategory || ''} 
+                onChange={(e) => setEditingProduct({...editingProduct, subCategory: e.target.value})}
+              />
+              <datalist id="sub-category-list">
+                {allSubCats.map((cat, idx) => (
+                  <option key={idx} value={cat} />
+                ))}
+              </datalist>
+            </div>
           </div>
 
           <div style={{ display: 'flex', gap: '16px', marginBottom: '16px' }}>

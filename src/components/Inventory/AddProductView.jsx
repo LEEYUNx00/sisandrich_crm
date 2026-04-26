@@ -10,6 +10,7 @@ export default function AddProductView({ products = [], setView }) {
     name: '',
     sku: '',
     category: 'เครื่องประดับ',
+    subCategory: '',
     price: '',
     cost: '',
     stockMode: 'Restricted', // ตั้งเป็น Restricted (ล็อคตามสต็อก) เป็นค่าเริ่มต้นเพื่อความปลอดภัย
@@ -30,6 +31,8 @@ export default function AddProductView({ products = [], setView }) {
   const [nameSuggestions, setNameSuggestions] = useState([]); // แนะนำตามชื่อ
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [printQty, setPrintQty] = useState(3); // จำนวนดวงที่จะพิมพ์
+
+  const allSubCats = ["Evil eyes", "หัวใจ", "จี้เล็ก", "มุก", "หยดน้ำ", "สายฝอ", "เพรช", "อื่นๆ"];
 
 
   const [categoryPrefixes, setCategoryPrefixes] = useState([
@@ -263,7 +266,8 @@ export default function AddProductView({ products = [], setView }) {
           name: p.name,
           cost: p.cost || '',
           price: p.price || '',
-          category: p.category || prev.category
+          category: p.category || prev.category,
+          subCategory: p.subCategory || prev.subCategory
       }));
       setShowSuggestions(false);
       setIsNameAuto(false);
@@ -291,6 +295,7 @@ export default function AddProductView({ products = [], setView }) {
         name: formData.name,
         sku: formData.sku,
         category: formData.category,
+        subCategory: formData.subCategory || '',
         price: price,
         cost: cost || 0,
         stockMode: formData.stockMode,
@@ -508,6 +513,22 @@ export default function AddProductView({ products = [], setView }) {
                       {isBarcodeAuto ? 'Sync ON' : 'Sync OFF'}
                     </button>
                   </div>
+              </div>
+              <div>
+                <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', fontWeight: '600', color: '#4A5568' }}>หมวดหมู่ย่อย (Sub-Category)</label>
+                <input 
+                  list="add-sub-category-list"
+                  type="text" 
+                  className="input" 
+                  placeholder="เช่น แหวนเพชร, สร้อยอิตาลี" 
+                  value={formData.subCategory || ''} 
+                  onChange={(e) => setFormData({ ...formData, subCategory: e.target.value })}
+                />
+                <datalist id="add-sub-category-list">
+                  {allSubCats.map((cat, idx) => (
+                    <option key={idx} value={cat} />
+                  ))}
+                </datalist>
               </div>
             </div>
 

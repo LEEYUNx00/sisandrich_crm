@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, ShoppingCart, Package, Users, Settings as SettingsIcon, FileText, BadgePercent, UserCheck, LogOut, Shield, History, Printer, Timer } from 'lucide-react';
+import { LayoutDashboard, ShoppingCart, Package, Users, Settings as SettingsIcon, FileText, BadgePercent, UserCheck, LogOut, Shield, History, Printer, Timer, Menu, X, Store } from 'lucide-react';
 import { auth } from './firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 
@@ -12,6 +12,7 @@ import CRM from './pages/CRM';
 import Promotions from './pages/Promotions';
 import Settings from './pages/Settings';
 import Reports from './pages/Reports';
+import OnlineCatalog from './pages/OnlineCatalog';
 import Employees from './pages/Employees';
 import PrintSettings from './pages/PrintSettings';
 import Login from './pages/Login';
@@ -23,7 +24,7 @@ import { collection, query, where, getDocs, onSnapshot } from 'firebase/firestor
 import { useLanguage } from './i18n/LanguageContext';
 import LanguageSwitcher from './components/LanguageSwitcher';
 
-const Sidebar = ({ permissions }) => {
+const Sidebar = ({ permissions, isOpen, onClose }) => {
   const location = useLocation();
   const { t } = useLanguage();
   const allNavItems = [
@@ -32,6 +33,7 @@ const Sidebar = ({ permissions }) => {
     { path: '/shift', label: t('nav_shift', '⏱ เปิด-ปิดกะ'), icon: Timer, key: 'pos' },
     { path: '/sales-history', label: t('nav_sales_history', 'Sales History'), icon: History, key: 'pos' },
     { path: '/inventory', label: t('nav_inventory', 'Inventory'), icon: Package, key: 'inventory' },
+    { path: '/catalog', label: t('nav_catalog', 'สต็อกสินค้าในร้าน'), icon: Store, key: 'catalog' },
     { path: '/crm', label: t('nav_crm', 'CRM & Customers'), icon: Users, key: 'crm' },
     { path: '/employees', label: t('nav_employees', 'Employees'), icon: UserCheck, key: 'employees' },
     { path: '/promotions', label: t('nav_promotions', 'Promotions'), icon: BadgePercent, key: 'promotions' },
@@ -47,8 +49,11 @@ const Sidebar = ({ permissions }) => {
 
   return (
     <aside className="sidebar">
-      <div className="sidebar-brand">
-        SIS&<span className="brand-highlight">RICH</span>
+      <div className="sidebar-brand" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+        <div>SIS&<span className="brand-highlight">RICH</span></div>
+        <button className="mobile-close-btn" onClick={onClose} style={{ display: 'none', background: 'none', border: 'none', color: '#fff', cursor: 'pointer' }}>
+          <X size={24} />
+        </button>
       </div>
       <nav className="sidebar-nav">
         {navItems.map((item) => {
@@ -59,6 +64,7 @@ const Sidebar = ({ permissions }) => {
               key={item.path} 
               to={item.path} 
               className={`nav-item ${isActive ? 'active' : ''}`}
+              onClick={onClose}
             >
               <Icon size={20} />
               <span>{item.label}</span>
@@ -70,7 +76,7 @@ const Sidebar = ({ permissions }) => {
   );
 };
 
-const Header = ({ activeShift }) => {
+const Header = ({ activeShift, onMenuClick }) => {
   const location = useLocation();
   const { t } = useLanguage();
   const getHeaderTitle = () => {
@@ -80,6 +86,7 @@ const Header = ({ activeShift }) => {
       case '/shift': return t('header_shift', 'เปิด-ปิดกะ (Shift Management)');
       case '/sales-history': return t('header_sales_history', 'Sales History & Void');
       case '/inventory': return t('header_inventory', 'Inventory Management');
+      case '/catalog': return t('header_catalog', 'สต็อกสินค้าในร้าน (Online Catalog)');
       case '/crm': return t('header_crm', 'Customer Relationship (CRM)');
       case '/employees': return t('header_employees', 'Employee Management');
       case '/promotions': return t('header_promotions', 'Promotions & Discounts');
@@ -92,8 +99,12 @@ const Header = ({ activeShift }) => {
 
   return (
     <header className="top-header">
-      <div style={{ display: 'flex', flexDirection: 'column' }}>
-        <div className="header-title" style={{ marginBottom: activeShift ? '0' : '0' }}>
+      <div style={{ display: 'flex', alignItems: 'center' }}>
+        <button className="mobile-menu-btn" onClick={onMenuClick}>
+          <Menu size={24} />
+        </button>
+        <div style={{ display: 'flex', flexDirection: 'column' }}>
+          <div className="header-title" style={{ marginBottom: activeShift ? '0' : '0' }}>
           {getHeaderTitle()}
         </div>
         {activeShift && (
@@ -114,6 +125,7 @@ const Header = ({ activeShift }) => {
             <span>{t('shift_label', 'Shift')} #{activeShift.shiftNumber} · {t('shift_started', 'เริ่มกะ')}: {activeShift.openedAt?.toDate?.().toLocaleString('th-TH', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: 'short' }) || '-'}</span>
           </div>
         )}
+        </div>
       </div>
       <div style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#F7FAFC', padding: '6px 16px', borderRadius: '12px', border: '1px solid #E2E8F0' }}>
@@ -121,7 +133,7 @@ const Header = ({ activeShift }) => {
            <span style={{ fontSize: '13px', fontWeight: 'bold', color: '#4A5568' }}>Online</span>
         </div>
         
-        <div style={{ textAlign: 'right' }}>
+        <div className="header-user-info" style={{ textAlign: 'right' }}>
            <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#2D3748' }}>{auth.currentUser?.email?.split('@')[0] || t('admin_staff', 'Admin Staff')}</div>
            <div style={{ fontSize: '10px', color: '#718096', fontWeight: 'bold', textTransform: 'uppercase' }}>{t('system_operator', 'System Operator')}</div>
         </div>
@@ -147,7 +159,7 @@ const Header = ({ activeShift }) => {
           onMouseOver={(e) => { e.currentTarget.style.background = '#FEB2B2'; e.currentTarget.style.color = '#fff'; }}
           onMouseOut={(e) => { e.currentTarget.style.background = '#FFF5F5'; e.currentTarget.style.color = '#E53E3E'; }}
         >
-          <LogOut size={16} /> {t('logout', 'Logout')}
+          <LogOut size={16} /> <span className="logout-text">{t('logout', 'Logout')}</span>
         </button>
       </div>
     </header>
@@ -159,6 +171,7 @@ function App() {
   const [userPermissions, setUserPermissions] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [activeShift, setActiveShift] = useState(null);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   // Active Shift Listener
   useEffect(() => {
@@ -241,10 +254,11 @@ function App() {
           !user ? (
             <Login />
           ) : (
-            <div className="app-container">
-              <Sidebar permissions={userPermissions} />
+            <div className={`app-container ${isSidebarOpen ? 'sidebar-open' : ''}`}>
+              <div className="sidebar-overlay" onClick={() => setIsSidebarOpen(false)}></div>
+              <Sidebar permissions={userPermissions} isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} />
               <main className="main-content">
-                <Header activeShift={activeShift} />
+                <Header activeShift={activeShift} onMenuClick={() => setIsSidebarOpen(!isSidebarOpen)} />
                 <div className="content-area">
                   <Routes>
                     <Route path="/" element={<Dashboard />} />
@@ -252,6 +266,7 @@ function App() {
                     <Route path="/shift" element={hasPermission('pos') ? <ShiftManagement /> : <Dashboard />} />
                     <Route path="/sales-history" element={hasPermission('pos') ? <SalesHistory /> : <Dashboard />} />
                     <Route path="/inventory" element={hasPermission('inventory') ? <Inventory /> : <Dashboard />} />
+                    <Route path="/catalog" element={hasPermission('inventory') ? <OnlineCatalog /> : <Dashboard />} />
                     <Route path="/crm" element={hasPermission('crm') ? <CRM /> : <Dashboard />} />
                     <Route path="/promotions" element={hasPermission('promotions') ? <Promotions /> : <Dashboard />} />
                     <Route path="/reports" element={hasPermission('reports') ? <Reports /> : <Dashboard />} />
